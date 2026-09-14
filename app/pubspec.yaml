@@ -36,14 +36,15 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # --- VSpo Music additions ---
-  # Audio playback engine.
-  just_audio: ^0.9.42
-  # Wires just_audio up to a background service + lock-screen/notification
-  # controls with minimal setup (wraps audio_service under the hood).
-  just_audio_background: ^0.0.1-beta.17
-  # Resolves a YouTube video ID to a direct, playable audio stream URL,
-  # entirely on-device — no server needed.
-  youtube_explode_dart: ^3.1.0
+  # PHASE 4: no Dart-side audio or WebView packages needed anymore.
+  # Playback now happens entirely on the native Android side
+  # (OverlayService.kt hosts a plain android.webkit.WebView inside an
+  # invisible system overlay window), reached from Dart via a plain
+  # MethodChannel (flutter/services, already part of the Flutter SDK).
+  # Earlier phases used just_audio/just_audio_background (Phase 1, blocked by
+  # YouTube's PO-token extraction wall) and flutter_inappwebview
+  # (Phase 3, blocked by Android tearing down the video Surface on
+  # backgrounding) — both removed since neither is used now.
 
 dev_dependencies:
   flutter_test:
