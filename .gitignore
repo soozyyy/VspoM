@@ -1,0 +1,11 @@
+# Node (catalog scraper)
+catalog-scraper/node_modules/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.iml

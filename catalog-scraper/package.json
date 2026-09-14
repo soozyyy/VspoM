@@ -1,0 +1,13 @@
+{
+  "name": "vspo-music-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-time/occasional scraper that reads vspodex.app's /music page and writes catalog.json for the VSpo Music app.",
+  "scripts": {
+    "scrape": "node scrape.js"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}
