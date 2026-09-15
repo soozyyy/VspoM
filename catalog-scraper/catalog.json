@@ -1,5 +1,19 @@
 [
   {
+    "videoId": "zYPWhivOG5M",
+    "title": "ハッピーシンセサイザ",
+    "artistName": "Akari ch.夢野あかり",
+    "artistSlug": "yumeno-akari",
+    "thumbnail": "https://i.ytimg.com/vi/zYPWhivOG5M/maxresdefault.jpg"
+  },
+  {
+    "videoId": "JvX5lkSe9iw",
+    "title": "ビッグドリーマー",
+    "artistName": "Akari ch.夢野あかり",
+    "artistSlug": "yumeno-akari",
+    "thumbnail": "https://i.ytimg.com/vi/JvX5lkSe9iw/maxresdefault.jpg"
+  },
+  {
     "videoId": "lx8Lw8zJ72g",
     "title": "Everyday Party Time!",
     "artistName": "Met Channel / 小森めと",
@@ -119,6 +133,13 @@
     "thumbnail": "https://i.ytimg.com/vi/K5DDPw7qqjI/maxresdefault.jpg"
   },
   {
+    "videoId": "cEU0kDWxNw4",
+    "title": "Beyond The Way",
+    "artistName": "Remia Aotsuki 【VSPO! EN】",
+    "artistSlug": "remia-aotsuki",
+    "thumbnail": "https://i.ytimg.com/vi/cEU0kDWxNw4/maxresdefault.jpg"
+  },
+  {
     "videoId": "h6wNLC4Be-g",
     "title": "Marshmallow",
     "artistName": "Remia Aotsuki 【VSPO! EN】",
@@ -133,6 +154,41 @@
     "thumbnail": "https://i.ytimg.com/vi/HOHapJpRlWw/maxresdefault.jpg"
   },
   {
+    "videoId": "asajsNX_xsI",
+    "title": "シャンティ/SHANTI",
+    "artistName": "Remia Aotsuki 【VSPO! EN】",
+    "artistSlug": "remia-aotsuki",
+    "thumbnail": "https://i.ytimg.com/vi/asajsNX_xsI/maxresdefault.jpg"
+  },
+  {
+    "videoId": "n3VPT1WQ0Ds",
+    "title": "花になって",
+    "artistName": "Remia Aotsuki 【VSPO! EN】",
+    "artistSlug": "remia-aotsuki",
+    "thumbnail": "https://i.ytimg.com/vi/n3VPT1WQ0Ds/maxresdefault.jpg"
+  },
+  {
+    "videoId": "I1pYddBpd-s",
+    "title": "Magnet",
+    "artistName": "Riko Solari【VSPO! EN】",
+    "artistSlug": "riko-solari",
+    "thumbnail": "https://i.ytimg.com/vi/I1pYddBpd-s/maxresdefault.jpg"
+  },
+  {
+    "videoId": "V0wPdiYsZpw",
+    "title": "Snow halation",
+    "artistName": "Riko Solari【VSPO! EN】",
+    "artistSlug": "riko-solari",
+    "thumbnail": "https://i.ytimg.com/vi/V0wPdiYsZpw/maxresdefault.jpg"
+  },
+  {
+    "videoId": "66l1D-zspXM",
+    "title": "アゲアゲアゲイン",
+    "artistName": "Riko Solari【VSPO! EN】",
+    "artistSlug": "riko-solari",
+    "thumbnail": "https://i.ytimg.com/vi/66l1D-zspXM/maxresdefault.jpg"
+  },
+  {
     "videoId": "Qr7aj_tM17M",
     "title": "エイリアンエイリアン (Alien Alien)",
     "artistName": "Riko Solari【VSPO! EN】",
@@ -140,11 +196,81 @@
     "thumbnail": "https://i.ytimg.com/vi/Qr7aj_tM17M/maxresdefault.jpg"
   },
   {
+    "videoId": "qVufkOL0e9Y",
+    "title": "DIAMOND in the ROUGH",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi/qVufkOL0e9Y/maxresdefault.jpg"
+  },
+  {
     "videoId": "R10PN9D7zoI",
     "title": "Gotcha!!",
     "artistName": "ぶいすぽっ！",
     "artistSlug": "vspo-official",
     "thumbnail": "https://i.ytimg.com/vi_webp/R10PN9D7zoI/maxresdefault.webp"
+  },
+  {
+    "videoId": "lizQBukq0ic",
+    "title": "Mr.Music",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/lizQBukq0ic/maxresdefault.webp"
+  },
+  {
+    "videoId": "VL08iZvJDQc",
+    "title": "Queens",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/VL08iZvJDQc/maxresdefault.webp"
+  },
+  {
+    "videoId": "g-nDAT7YN68",
+    "title": "Shining Phrase！",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/g-nDAT7YN68/maxresdefault.webp"
+  },
+  {
+    "videoId": "6BfKzQzBe7M",
+    "title": "Tell Your World",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/6BfKzQzBe7M/maxresdefault.webp"
+  },
+  {
+    "videoId": "B_aXTIQV6hU",
+    "title": "すうぃーとサプライズ",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/B_aXTIQV6hU/maxresdefault.webp"
+  },
+  {
+    "videoId": "Dlo0Pb09HX0",
+    "title": "とんずらいおっと",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/Dlo0Pb09HX0/maxresdefault.webp"
+  },
+  {
+    "videoId": "SbFxPvG7Iug",
+    "title": "ぶいすぽっ！ for Victory!(Full ver.)",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/SbFxPvG7Iug/maxresdefault.webp"
+  },
+  {
+    "videoId": "gQMQvO78Ujg",
+    "title": "ぶいすぽっ！ for Victory!アニメーションMV",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/gQMQvO78Ujg/maxresdefault.webp"
+  },
+  {
+    "videoId": "C49BA6cDkY0",
+    "title": "光るなら",
+    "artistName": "ぶいすぽっ！",
+    "artistSlug": "vspo-official",
+    "thumbnail": "https://i.ytimg.com/vi_webp/C49BA6cDkY0/maxresdefault.webp"
   },
   {
     "videoId": "Co8nqjdF98M",
@@ -245,11 +371,53 @@
     "thumbnail": "https://i.ytimg.com/vi/FWy8iW5BMD8/maxresdefault.jpg"
   },
   {
+    "videoId": "fXhW7aixZmE",
+    "title": "clumsy trick",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi_webp/fXhW7aixZmE/maxresdefault.webp"
+  },
+  {
+    "videoId": "16wiTA8ZZ1w",
+    "title": "Nocturnal Night Fever",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi_webp/16wiTA8ZZ1w/maxresdefault.webp"
+  },
+  {
+    "videoId": "JY2jgrRW6zQ",
+    "title": "Temptation",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi/JY2jgrRW6zQ/maxresdefault.jpg"
+  },
+  {
+    "videoId": "eUwksWXbLKM",
+    "title": "え？あぁ、そう。",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi/eUwksWXbLKM/maxresdefault.jpg"
+  },
+  {
+    "videoId": "4L9JNCgyqHA",
+    "title": "オトナブルー",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi/4L9JNCgyqHA/maxresdefault.jpg"
+  },
+  {
     "videoId": "VtGwbhisePI",
     "title": "ポケットにファンタジー",
     "artistName": "八雲べに",
     "artistSlug": "yakumo-beni",
     "thumbnail": "https://i.ytimg.com/vi/VtGwbhisePI/maxresdefault.jpg"
+  },
+  {
+    "videoId": "L93enlVyak8",
+    "title": "ようこそ！ジャパリパークへ",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi_webp/L93enlVyak8/maxresdefault.webp"
   },
   {
     "videoId": "nrZHa3NITI8",
@@ -259,11 +427,25 @@
     "thumbnail": "https://i.ytimg.com/vi/nrZHa3NITI8/maxresdefault.jpg"
   },
   {
+    "videoId": "2bszwh1Cb_c",
+    "title": "吉原ラメント",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi/2bszwh1Cb_c/maxresdefault.jpg"
+  },
+  {
     "videoId": "WOMNUvr4zU0",
     "title": "極楽浄土",
     "artistName": "八雲べに",
     "artistSlug": "yakumo-beni",
     "thumbnail": "https://i.ytimg.com/vi_webp/WOMNUvr4zU0/maxresdefault.webp"
+  },
+  {
+    "videoId": "OLsVLdrbSm0",
+    "title": "虎視眈々",
+    "artistName": "八雲べに",
+    "artistSlug": "yakumo-beni",
+    "thumbnail": "https://i.ytimg.com/vi/OLsVLdrbSm0/maxresdefault.jpg"
   },
   {
     "videoId": "lEpVOH3_stM",
@@ -301,11 +483,67 @@
     "thumbnail": "https://i.ytimg.com/vi/ac4BaGzD6bg/maxresdefault.jpg"
   },
   {
+    "videoId": "mrAWbxB5p4k",
+    "title": "FOCUS",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/mrAWbxB5p4k/maxresdefault.jpg"
+  },
+  {
+    "videoId": "RJXALPS3cl0",
+    "title": "G4L",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/RJXALPS3cl0/maxresdefault.jpg"
+  },
+  {
+    "videoId": "KXvopwR04as",
+    "title": "Ready set glow",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/KXvopwR04as/maxresdefault.jpg"
+  },
+  {
+    "videoId": "AaQgYhkRpKU",
+    "title": "とても素敵な六月でした",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/AaQgYhkRpKU/maxresdefault.jpg"
+  },
+  {
+    "videoId": "SEABn1jepkY",
+    "title": "ヒステリックナイトガール",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/SEABn1jepkY/maxresdefault.jpg"
+  },
+  {
     "videoId": "WekSPzztoug",
     "title": "またね",
     "artistName": "夜乃くろむ / Yano Kuromu",
     "artistSlug": "yano-kuromu",
     "thumbnail": "https://i.ytimg.com/vi/WekSPzztoug/maxresdefault.jpg"
+  },
+  {
+    "videoId": "vkRzTQiUTDg",
+    "title": "メリュー",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/vkRzTQiUTDg/maxresdefault.jpg"
+  },
+  {
+    "videoId": "3zrCTEYimcE",
+    "title": "神のまにまに",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/3zrCTEYimcE/maxresdefault.jpg"
+  },
+  {
+    "videoId": "aOGn3wOHbWs",
+    "title": "紋白蝶 / covered by 夜乃くろむ",
+    "artistName": "夜乃くろむ / Yano Kuromu",
+    "artistSlug": "yano-kuromu",
+    "thumbnail": "https://i.ytimg.com/vi/aOGn3wOHbWs/maxresdefault.jpg"
   },
   {
     "videoId": "9S8dljRfZDU",
@@ -350,11 +588,53 @@
     "thumbnail": "https://i.ytimg.com/vi/ZNIYNczrYTw/maxresdefault.jpg"
   },
   {
+    "videoId": "yknLvSTYZL4",
+    "title": "ザムザ",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/yknLvSTYZL4/maxresdefault.jpg"
+  },
+  {
+    "videoId": "szpxVCOdDks",
+    "title": "さよならアイデンティティー",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/szpxVCOdDks/maxresdefault.jpg"
+  },
+  {
+    "videoId": "eqcmSnvbTjo",
+    "title": "フォニイ",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/eqcmSnvbTjo/maxresdefault.jpg"
+  },
+  {
+    "videoId": "L6wN1Y_3rBk",
+    "title": "メフィスト",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/L6wN1Y_3rBk/maxresdefault.jpg"
+  },
+  {
     "videoId": "Hwu4BRgG9G0",
     "title": "名前のない怪物",
     "artistName": "小雀とと / Toto Kogara",
     "artistSlug": "kogara-toto",
     "thumbnail": "https://i.ytimg.com/vi_webp/Hwu4BRgG9G0/maxresdefault.webp"
+  },
+  {
+    "videoId": "UDCNTJ8XHjI",
+    "title": "君がくれた羽",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/UDCNTJ8XHjI/maxresdefault.jpg"
+  },
+  {
+    "videoId": "t8w7hQV-4P4",
+    "title": "声",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi_webp/t8w7hQV-4P4/maxresdefault.webp"
   },
   {
     "videoId": "IKICagvbCr0",
@@ -376,6 +656,13 @@
     "artistName": "小雀とと / Toto Kogara",
     "artistSlug": "kogara-toto",
     "thumbnail": "https://i.ytimg.com/vi/Cb-yIPXh_0c/maxresdefault.jpg"
+  },
+  {
+    "videoId": "WYlF62JrkME",
+    "title": "生きるよすが",
+    "artistName": "小雀とと / Toto Kogara",
+    "artistSlug": "kogara-toto",
+    "thumbnail": "https://i.ytimg.com/vi/WYlF62JrkME/maxresdefault.jpg"
   },
   {
     "videoId": "YKEhO5jhP3g",
@@ -1106,11 +1393,53 @@
     "thumbnail": "https://i.ytimg.com/vi_webp/2GpHjSk4iCY/maxresdefault.webp"
   },
   {
+    "videoId": "TjR2IixcTmg",
+    "title": "ここがロドスだ、ここで跳べ！",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi_webp/TjR2IixcTmg/maxresdefault.webp"
+  },
+  {
+    "videoId": "hXkgK2Y-w1Q",
+    "title": "ハイドアンド・シーク",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi/hXkgK2Y-w1Q/maxresdefault.jpg"
+  },
+  {
+    "videoId": "Jxl2n5EiB1s",
+    "title": "ひとくちの魔法",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi/Jxl2n5EiB1s/maxresdefault.jpg"
+  },
+  {
+    "videoId": "LYSUw7VW8Ao",
+    "title": "ヨワネハキ",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi/LYSUw7VW8Ao/maxresdefault.jpg"
+  },
+  {
     "videoId": "b8liFH9OVYs",
     "title": "ロキ",
     "artistName": "紡木こかげ",
     "artistSlug": "tsumugi-kokage",
     "thumbnail": "https://i.ytimg.com/vi/b8liFH9OVYs/maxresdefault.jpg"
+  },
+  {
+    "videoId": "rlDoFSPNHZI",
+    "title": "夢をかなえてドラえもん",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi/rlDoFSPNHZI/maxresdefault.jpg"
+  },
+  {
+    "videoId": "GEGkyKJTS6U",
+    "title": "桜の花びらたち",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi/GEGkyKJTS6U/maxresdefault.jpg"
   },
   {
     "videoId": "4BiGlILqdBM",
@@ -1120,6 +1449,41 @@
     "thumbnail": "https://i.ytimg.com/vi/4BiGlILqdBM/maxresdefault.jpg"
   },
   {
+    "videoId": "mXzd2Off45g",
+    "title": "陽キャJKに憧れる陰キャJKの歌",
+    "artistName": "紡木こかげ",
+    "artistSlug": "tsumugi-kokage",
+    "thumbnail": "https://i.ytimg.com/vi_webp/mXzd2Off45g/maxresdefault.webp"
+  },
+  {
+    "videoId": "w72-tPc8s0o",
+    "title": "あのね",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/w72-tPc8s0o/maxresdefault.jpg"
+  },
+  {
+    "videoId": "mupvYekYlYg",
+    "title": "いーあるふぁんくらぶ",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/mupvYekYlYg/maxresdefault.jpg"
+  },
+  {
+    "videoId": "wEEuZIeKD_g",
+    "title": "インドア系ならトラックメイカー",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/wEEuZIeKD_g/maxresdefault.jpg"
+  },
+  {
+    "videoId": "TLjRDCaebjA",
+    "title": "コネクト",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/TLjRDCaebjA/maxresdefault.jpg"
+  },
+  {
     "videoId": "6RxLs7f48cc",
     "title": "ちゅ、多様性。",
     "artistName": "紫宮るな /shinomiya runa",
@@ -1127,11 +1491,53 @@
     "thumbnail": "https://i.ytimg.com/vi_webp/6RxLs7f48cc/maxresdefault.webp"
   },
   {
+    "videoId": "m9w1tlfMPBA",
+    "title": "チューリングラブ",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/m9w1tlfMPBA/maxresdefault.jpg"
+  },
+  {
+    "videoId": "xAOPb4WnO0U",
+    "title": "トウキョウ・シャンディ・ランデヴ",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/xAOPb4WnO0U/maxresdefault.webp"
+  },
+  {
     "videoId": "28S98o1Y5PI",
     "title": "メランコリック",
     "artistName": "紫宮るな /shinomiya runa",
     "artistSlug": "shinomiya-runa",
     "thumbnail": "https://i.ytimg.com/vi/28S98o1Y5PI/maxresdefault.jpg"
+  },
+  {
+    "videoId": "q1ACVme-mQY",
+    "title": "もうそう♡えくすぷれす",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/q1ACVme-mQY/maxresdefault.jpg"
+  },
+  {
+    "videoId": "T_2plQDKuS4",
+    "title": "二時間だけのバカンス",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/T_2plQDKuS4/maxresdefault.jpg"
+  },
+  {
+    "videoId": "oVOIWBJnA34",
+    "title": "瞬き",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/oVOIWBJnA34/maxresdefault.jpg"
+  },
+  {
+    "videoId": "TcCz2V_JX4s",
+    "title": "竹取オーバーナイトセンセーション",
+    "artistName": "紫宮るな /shinomiya runa",
+    "artistSlug": "shinomiya-runa",
+    "thumbnail": "https://i.ytimg.com/vi/TcCz2V_JX4s/maxresdefault.jpg"
   },
   {
     "videoId": "m184lYXOZYg",
@@ -1701,11 +2107,46 @@
     "thumbnail": "https://i.ytimg.com/vi/HigXT_iT1c4/maxresdefault.jpg"
   },
   {
+    "videoId": "zEwe8nIcKyo",
+    "title": "Luna say maybe",
+    "artistName": "英リサ.Hanabusa Lisa",
+    "artistSlug": "hanabusa-lisa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/zEwe8nIcKyo/maxresdefault.webp"
+  },
+  {
+    "videoId": "gXI59A6D11s",
+    "title": "My Dearest",
+    "artistName": "英リサ.Hanabusa Lisa",
+    "artistSlug": "hanabusa-lisa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/gXI59A6D11s/maxresdefault.webp"
+  },
+  {
+    "videoId": "OXmT5oIzsXI",
+    "title": "Tokimeki",
+    "artistName": "英リサ.Hanabusa Lisa",
+    "artistSlug": "hanabusa-lisa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/OXmT5oIzsXI/maxresdefault.webp"
+  },
+  {
+    "videoId": "nl12QpTMNLg",
+    "title": "星が瞬くこんな夜に",
+    "artistName": "英リサ.Hanabusa Lisa",
+    "artistSlug": "hanabusa-lisa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/nl12QpTMNLg/maxresdefault.webp"
+  },
+  {
     "videoId": "NofzQj3raQM",
     "title": "翠彩花",
     "artistName": "英リサ.Hanabusa Lisa",
     "artistSlug": "hanabusa-lisa",
     "thumbnail": "https://i.ytimg.com/vi/NofzQj3raQM/maxresdefault.jpg"
+  },
+  {
+    "videoId": "_6KTWVLxkvE",
+    "title": "青春おでん",
+    "artistName": "英リサ.Hanabusa Lisa",
+    "artistSlug": "hanabusa-lisa",
+    "thumbnail": "https://i.ytimg.com/vi_webp/_6KTWVLxkvE/maxresdefault.webp"
   },
   {
     "videoId": "4dp7KF9E9Bg",
@@ -1930,5 +2371,12 @@
     "artistName": "蝶屋はなび / Choya Hanabi",
     "artistSlug": "choya-hanabi",
     "thumbnail": "https://i.ytimg.com/vi/hw3dmpkqdpk/maxresdefault.jpg"
+  },
+  {
+    "videoId": "mrZtlZRfQOQ",
+    "title": "愛して愛して愛して",
+    "artistName": "銀城サイネ / Ginjo Saine",
+    "artistSlug": "ginjo-saine",
+    "thumbnail": "https://i.ytimg.com/vi/mrZtlZRfQOQ/maxresdefault.jpg"
   }
 ]
