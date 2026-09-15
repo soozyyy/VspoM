@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // ---------------------------------------------------------------------------
 // PHASE 5 — real playlist UI
@@ -30,6 +31,11 @@ class Song {
   final String title;
   final String artist;
   final String thumbnailUrl;
+  // catalog-scraper/scrape.js also captures vspodex.app's romanized artist
+  // slug (e.g. "yakumo-beni" for 八雲べに) from the artist page URL. It's
+  // what lets search match a romaji query against a kanji/kana artist name,
+  // the same way vspodex.app's own search does — see _matchesSearch below.
+  final String? artistSlug;
   // catalog-scraper/scrape.js reads vspodex.app's public page, which doesn't
   // expose track length anywhere in the DOM — so this is only known once a
   // song has actually started playing and the native side reports it via
@@ -41,6 +47,7 @@ class Song {
     required this.title,
     required this.artist,
     required this.thumbnailUrl,
+    this.artistSlug,
     this.duration,
   });
 
@@ -57,10 +64,33 @@ class Song {
       thumbnailUrl: (json['thumbnail'] as String?) ??
           (json['thumbnailUrl'] as String?) ??
           'https://i.ytimg.com/vi/$videoId/mqdefault.jpg',
+      artistSlug: json['artistSlug'] as String?,
       duration: json['durationSeconds'] != null
           ? Duration(seconds: json['durationSeconds'] as int)
           : null,
     );
+  }
+
+  // Search matching used by the playlist screen's search box. Matches on
+  // title, the artist's display name (often kanji/kana), AND the artist's
+  // romanized slug — so typing "yaku" finds 八雲べに (slug "yakumo-beni"),
+  // the same behavior vspodex.app's own search has, even though "yaku"
+  // never appears in the kanji itself.
+  bool matchesSearch(String query) {
+    if (query.isEmpty) return true;
+    final q = query.toLowerCase().trim();
+    if (title.toLowerCase().contains(q)) return true;
+    if (artist.toLowerCase().contains(q)) return true;
+    final slug = artistSlug?.toLowerCase() ?? '';
+    if (slug.isEmpty) return false;
+    // Plain substring already covers prefix-style queries like "yaku" ->
+    // "yakumo-beni". Also compare with hyphens/spaces stripped from both
+    // sides so a full-name query like "yakumo beni" matches the hyphenated
+    // slug too.
+    if (slug.contains(q)) return true;
+    final slugCompact = slug.replaceAll('-', '');
+    final qCompact = q.replaceAll(RegExp(r'[\s-]'), '');
+    return qCompact.isNotEmpty && slugCompact.contains(qCompact);
   }
 }
 
@@ -153,7 +183,7 @@ class VspoMusicApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'VSpo Music',
+      title: 'VspoM',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -181,6 +211,8 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
   List<Song> _catalog = [];
   bool _loadingCatalog = true;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   List<int> _playOrder = [];
   int _playOrderIndex = 0;
   int? _currentSongIndex;
@@ -217,8 +249,25 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   @override
   void dispose() {
     _progressTimer?.cancel();
+    _searchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  // Original-catalog indices whose song matches the current search query, in
+  // catalog order. Kept as (originalIndex, song) pairs so tapping a filtered
+  // row, and highlighting the currently-playing row, still refer back to the
+  // right index in _catalog (shuffle order is also built from _catalog
+  // indices, so this doesn't disturb playback).
+  List<int> get _visibleIndices {
+    if (_searchQuery.isEmpty) {
+      return List.generate(_catalog.length, (i) => i);
+    }
+    final result = <int>[];
+    for (var i = 0; i < _catalog.length; i++) {
+      if (_catalog[i].matchesSearch(_searchQuery)) result.add(i);
+    }
+    return result;
   }
 
   @override
@@ -247,17 +296,18 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     await _overlayChannel.invokeMethod('requestNotificationPermission');
   }
 
-  String _formatTrackDuration(Duration? d) {
-    // vspodex.app's page doesn't expose track length, so this is usually
-    // unknown until a song has actually started playing.
-    if (d == null) return '--:--';
-    final minutes = d.inMinutes;
-    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
+  // When set, shuffling (including the auto-reshuffle that happens when a
+  // shuffle pass runs out) is restricted to these catalog indices instead of
+  // the whole catalog — this is what lets "Shuffle Play All" shuffle only
+  // the current search results when a filter is active. Null means "the
+  // whole catalog", which is also what tapping an individual track resets
+  // it to, so browsing back to the full list after a scoped shuffle behaves
+  // like a normal player again.
+  List<int>? _shuffleScope;
 
   void _newShuffleOrder({int? startingWith}) {
-    final indices = List.generate(_catalog.length, (i) => i)..shuffle();
+    final pool = _shuffleScope ?? List.generate(_catalog.length, (i) => i);
+    final indices = List<int>.from(pool)..shuffle();
     if (startingWith != null) {
       indices.remove(startingWith);
       indices.insert(0, startingWith);
@@ -295,6 +345,12 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       await _requestPermission();
       return;
     }
+    // If a search filter is active, "Shuffle Play All" shuffles just the
+    // matching songs (and keeps looping within just them, via _shuffleScope)
+    // instead of the whole catalog.
+    final filtered = _searchQuery.isEmpty ? null : _visibleIndices;
+    if (filtered != null && filtered.isEmpty) return;
+    _shuffleScope = filtered;
     _newShuffleOrder();
     await _playSongAt(0);
   }
@@ -304,6 +360,10 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       await _requestPermission();
       return;
     }
+    // Tapping a specific track always plays/continues across the whole
+    // catalog, regardless of any active search filter or prior scoped
+    // shuffle — matches the pre-search behavior.
+    _shuffleScope = null;
     _newShuffleOrder(startingWith: songIndex);
     await _playSongAt(0);
   }
@@ -383,20 +443,32 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             ? _catalog[_currentSongIndex!]
             : null;
 
+    final visibleIndices = _visibleIndices;
+
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
+            SliverToBoxAdapter(child: _buildSearchBar()),
+            SliverToBoxAdapter(
+              child: _buildHeader(currentSong, visibleIndices.length),
+            ),
             if (_hasPermission == false) SliverToBoxAdapter(child: _buildPermissionBanner()),
             if (_hasNotificationPermission == false)
               SliverToBoxAdapter(child: _buildNotificationPermissionBanner()),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildTrackRow(index),
-                childCount: _catalog.length,
+            if (_searchQuery.isNotEmpty && visibleIndices.isEmpty)
+              SliverToBoxAdapter(child: _buildNoResults())
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => _buildTrackRow(visibleIndices[i]),
+                  childCount: visibleIndices.length,
+                  // Rows are stateless (no TextField/PageStorage/etc to
+                  // preserve), so skip the extra keep-alive bookkeeping
+                  // Flutter otherwise wraps around every list item.
+                  addAutomaticKeepAlives: false,
+                ),
               ),
-            ),
             const SliverToBoxAdapter(child: SizedBox(height: 96)),
           ],
         ),
@@ -407,9 +479,10 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(Song? currentSong, int visibleCount) {
+    final searchActive = _searchQuery.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -417,21 +490,25 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             borderRadius: BorderRadius.circular(8),
             child: AspectRatio(
               aspectRatio: 1,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.deepPurple.shade400,
-                      Colors.indigo.shade900,
-                    ],
-                  ),
-                ),
-                child: const Center(
-                  child: Icon(Icons.music_note, size: 72, color: Colors.white70),
-                ),
-              ),
+              child: currentSong != null
+                  ? CachedNetworkImage(
+                      imageUrl: currentSong.thumbnailUrl,
+                      fit: BoxFit.cover,
+                      // Decode straight to roughly the size this square is
+                      // ever shown at (a couple hundred logical px, times a
+                      // margin for high-DPI screens) instead of whatever
+                      // huge resolution vspodex.app happens to serve —
+                      // avoids paying full-res JPEG/WEBP decode cost for a
+                      // small on-screen image.
+                      memCacheWidth: 640,
+                      fadeInDuration: const Duration(milliseconds: 120),
+                      placeholder: (_, __) => _buildHeaderPlaceholder(),
+                      // Falls back to the placeholder gradient+icon if the
+                      // thumbnail fails to load (e.g. transient network
+                      // hiccup), rather than showing a broken-image icon.
+                      errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                    )
+                  : _buildHeaderPlaceholder(),
             ),
           ),
           const SizedBox(height: 16),
@@ -455,9 +532,17 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _loadingCatalog ? null : _shufflePlayAll,
+                  onPressed: (_loadingCatalog || (searchActive && visibleCount == 0))
+                      ? null
+                      : _shufflePlayAll,
                   icon: const Icon(Icons.shuffle),
-                  label: Text(_playing ? 'Shuffling…' : 'Shuffle Play All'),
+                  label: Text(
+                    _playing
+                        ? 'Shuffling…'
+                        : (searchActive
+                            ? 'Shuffle These $visibleCount Songs'
+                            : 'Shuffle Play All'),
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -467,6 +552,63 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  // The "nothing playing yet" state for the header — the VSpo logo, on a
+  // white backing (the logo artwork itself has a white background). Also
+  // used as a fallback if a now-playing thumbnail fails to load.
+  Widget _buildHeaderPlaceholder() {
+    return Container(
+      color: Colors.white,
+      child: Image.asset(
+        'assets/branding/vspo_logo.png',
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) => setState(() => _searchQuery = value),
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Search songs or artists…',
+          hintStyle: TextStyle(color: Colors.grey.shade500),
+          prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: Icon(Icons.clear, color: Colors.grey.shade500),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
+          filled: true,
+          fillColor: const Color(0xFF1E1E1E),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoResults() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+      child: Center(
+        child: Text(
+          'No songs match "$_searchQuery"',
+          style: TextStyle(color: Colors.grey.shade500),
+        ),
       ),
     );
   }
@@ -535,12 +677,30 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Image.network(
-          song.thumbnailUrl,
+        child: CachedNetworkImage(
+          imageUrl: song.thumbnailUrl,
           width: 48,
           height: 48,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
+          // The single biggest fix for the list-scrolling jank: vspodex.app
+          // thumbnails are often 1280x720+, and decoding that in full for
+          // every one of ~340 rows just to show a 48x48 icon (repeatedly,
+          // as rows scroll in and out) is what was costing frames. Capping
+          // the decode target to roughly the on-screen size (x2 for
+          // high-DPI) makes each decode tiny and keeps far more thumbnails
+          // resident in the image cache at once, which also means less
+          // re-decoding on every fling. Disk caching (built into this
+          // package) also means these aren't re-downloaded from scratch
+          // every time the app is reopened.
+          memCacheWidth: 96,
+          memCacheHeight: 96,
+          fadeInDuration: const Duration(milliseconds: 80),
+          placeholder: (_, __) => Container(
+            width: 48,
+            height: 48,
+            color: Colors.grey.shade800,
+          ),
+          errorWidget: (_, __, ___) => Container(
             width: 48,
             height: 48,
             color: Colors.grey.shade800,
@@ -562,10 +722,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
-      ),
-      trailing: Text(
-        _formatTrackDuration(song.duration),
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 12.5),
       ),
       onTap: () => _playSpecificSong(index),
     );
@@ -617,12 +773,20 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: Image.network(
-                        song.thumbnailUrl,
+                      child: CachedNetworkImage(
+                        imageUrl: song.thumbnailUrl,
                         width: 44,
                         height: 44,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        memCacheWidth: 88,
+                        memCacheHeight: 88,
+                        fadeInDuration: const Duration(milliseconds: 80),
+                        placeholder: (_, __) => Container(
+                          width: 44,
+                          height: 44,
+                          color: Colors.grey.shade800,
+                        ),
+                        errorWidget: (_, __, ___) => Container(
                           width: 44,
                           height: 44,
                           color: Colors.grey.shade800,

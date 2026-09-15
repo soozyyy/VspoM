@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
     <application
-        android:label="vspo_music"
+        android:label="VspoM"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -54,6 +54,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Disables the Impeller renderer in favor of the older Skia
+             backend. The corrupted/static-noise rendering seen on the
+             Shuffle button and search bar (rounded-corner widgets) is a
+             known Impeller shader-compilation glitch on some Android GPUs
+             — it briefly renders garbage while a new rounded-rect/shadow
+             shader compiles. Skia doesn't have this issue. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

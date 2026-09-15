@@ -46,6 +46,16 @@ dependencies:
   # (Phase 3, blocked by Android tearing down the video Surface on
   # backgrounding) — both removed since neither is used now.
 
+  # PHASE 6 (perf): plain Image.network was decoding every thumbnail at its
+  # full downloaded resolution (vspodex.app's thumbnails are often
+  # 1280x720+) just to display it at ~48x48 in the list, for all ~340 songs
+  # as they scroll through the viewport — expensive to decode, and heavy on
+  # Flutter's in-memory image cache, which is what caused the low-fps/janky
+  # scrolling. cached_network_image lets us decode straight to the small
+  # display size (memCacheWidth/Height) and also disk-caches thumbnails so
+  # re-opening the app doesn't re-download and re-decode all of them again.
+  cached_network_image: ^3.4.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,6 +66,23 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+  # Generates the Android (and iOS) launcher icon from assets/icon/vspo_icon.png
+  # — run `dart run flutter_launcher_icons` after `flutter pub get` to apply it
+  # (see flutter_launcher_icons config below). Replaces the default Flutter icon.
+  flutter_launcher_icons: ^0.14.3
+
+# Config for the flutter_launcher_icons package (dev dependency above).
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/vspo_icon.png"
+  # The source image is a full square with a white background already, so it
+  # works as-is for the legacy icon. min_sdk_android enables the newer
+  # adaptive-icon format too (Android 8+), reusing the same image.
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/vspo_icon.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -76,6 +103,7 @@ flutter:
   # catalog changes, then rebuild.
   assets:
     - assets/catalog.json
+    - assets/branding/vspo_logo.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
