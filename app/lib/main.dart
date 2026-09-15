@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,32 +30,98 @@ class Song {
   final String title;
   final String artist;
   final String thumbnailUrl;
-  final Duration duration;
+  // catalog-scraper/scrape.js reads vspodex.app's public page, which doesn't
+  // expose track length anywhere in the DOM — so this is only known once a
+  // song has actually started playing and the native side reports it via
+  // getPosition(). Null means "not known yet".
+  final Duration? duration;
 
   const Song({
     required this.videoId,
     required this.title,
     required this.artist,
     required this.thumbnailUrl,
-    required this.duration,
+    this.duration,
   });
 
+  // Matches catalog.json as written by catalog-scraper/scrape.js:
+  // { videoId, title, artistName, artistSlug, thumbnail }
   factory Song.fromJson(Map<String, dynamic> json) {
+    final videoId = json['videoId'] as String;
     return Song(
-      videoId: json['videoId'] as String,
-      title: json['title'] as String,
-      artist: json['artist'] as String,
-      thumbnailUrl: json['thumbnailUrl'] as String? ??
-          'https://i.ytimg.com/vi/${json['videoId']}/mqdefault.jpg',
-      duration: Duration(seconds: json['durationSeconds'] as int? ?? 0),
+      videoId: videoId,
+      title: (json['title'] as String?) ?? 'Untitled',
+      artist: (json['artistName'] as String?) ??
+          (json['artist'] as String?) ??
+          'Unknown artist',
+      thumbnailUrl: (json['thumbnail'] as String?) ??
+          (json['thumbnailUrl'] as String?) ??
+          'https://i.ytimg.com/vi/$videoId/mqdefault.jpg',
+      duration: json['durationSeconds'] != null
+          ? Duration(seconds: json['durationSeconds'] as int)
+          : null,
     );
   }
 }
 
-// Placeholder catalog so the UI can be built/iterated on before the real
-// scraper output (343 songs from vspodex.app) is wired in. Swap
-// `_mockCatalog` for a fetch from raw.githubusercontent.com/.../catalog.json
-// later — the rest of the UI only depends on `List<Song>`.
+// A GitHub Actions workflow (.github/workflows/refresh-catalog.yml) re-runs
+// catalog-scraper/scrape.js on a schedule and commits the refreshed
+// catalog.json straight to the repo — on GitHub's own servers, not this
+// app, not any PC. This is that file's raw content: a plain JSON GET, no
+// scraping happens on-device. Update the org/repo/branch here if the repo
+// ever moves.
+const _remoteCatalogUrl =
+    'https://raw.githubusercontent.com/soozyyy/VspoM/main/catalog-scraper/catalog.json';
+
+/// Loads the VSpo catalog, freshest source first:
+/// 1. Live fetch from GitHub (_remoteCatalogUrl) — picks up whatever the
+///    scheduled scrape last found, no app rebuild needed.
+/// 2. The copy bundled at build time as assets/catalog.json, for when
+///    there's no network yet (first launch, airplane mode, etc.).
+/// 3. Mock placeholder data, so the app still runs before either exists.
+Future<List<Song>> _loadCatalog() async {
+  final remote = await _fetchRemoteCatalog();
+  if (remote != null && remote.isNotEmpty) return remote;
+
+  try {
+    final raw = await rootBundle.loadString('assets/catalog.json');
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    if (decoded.isNotEmpty) {
+      return decoded
+          .map((e) => Song.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+  } catch (_) {
+    // Fall through to mock data below.
+  }
+  return _mockCatalog();
+}
+
+Future<List<Song>?> _fetchRemoteCatalog() async {
+  final client = HttpClient();
+  client.connectionTimeout = const Duration(seconds: 6);
+  try {
+    final request = await client
+        .getUrl(Uri.parse(_remoteCatalogUrl))
+        .timeout(const Duration(seconds: 6));
+    final response = await request.close().timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) return null;
+    final body = await response.transform(utf8.decoder).join();
+    final decoded = jsonDecode(body) as List<dynamic>;
+    return decoded
+        .map((e) => Song.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    // Offline, DNS failure, GitHub hiccup, malformed JSON, etc. — the
+    // bundled-asset fallback in _loadCatalog() covers all of these.
+    return null;
+  } finally {
+    client.close(force: true);
+  }
+}
+
+// Placeholder catalog used until catalog.json has real entries — see
+// _loadCatalog() above.
 List<Song> _mockCatalog() {
   final titles = [
     'Kirinuki Blues', 'Neon Handshake', 'Midnight Karaoke', 'Static Bloom',
@@ -111,11 +179,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     with WidgetsBindingObserver {
   static const _overlayChannel = MethodChannel('vspo_music/overlay');
 
-  late final List<Song> _catalog;
+  List<Song> _catalog = [];
+  bool _loadingCatalog = true;
   List<int> _playOrder = [];
   int _playOrderIndex = 0;
   int? _currentSongIndex;
   bool? _hasPermission;
+  bool? _hasNotificationPermission;
   bool _playing = false;
   bool _isPaused = false;
 
@@ -129,9 +199,15 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   @override
   void initState() {
     super.initState();
-    _catalog = _mockCatalog();
     WidgetsBinding.instance.addObserver(this);
     _checkPermission();
+    _loadCatalog().then((songs) {
+      if (!mounted) return;
+      setState(() {
+        _catalog = songs;
+        _loadingCatalog = false;
+      });
+    });
     _progressTimer = Timer.periodic(
       const Duration(milliseconds: 500),
       (_) => _pollPosition(),
@@ -155,25 +231,26 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   Future<void> _checkPermission() async {
     final granted =
         await _overlayChannel.invokeMethod<bool>('hasOverlayPermission');
-    setState(() => _hasPermission = granted ?? false);
+    final notificationGranted = await _overlayChannel
+        .invokeMethod<bool>('hasNotificationPermission');
+    setState(() {
+      _hasPermission = granted ?? false;
+      _hasNotificationPermission = notificationGranted ?? false;
+    });
   }
 
   Future<void> _requestPermission() async {
     await _overlayChannel.invokeMethod('requestOverlayPermission');
   }
 
-  Duration get _totalDuration =>
-      _catalog.fold(Duration.zero, (sum, s) => sum + s.duration);
-
-  String _formatTotalDuration() {
-    final total = _totalDuration;
-    final hours = total.inHours;
-    final minutes = total.inMinutes.remainder(60);
-    if (hours > 0) return '$hours hr $minutes min';
-    return '$minutes min';
+  Future<void> _requestNotificationPermission() async {
+    await _overlayChannel.invokeMethod('requestNotificationPermission');
   }
 
-  String _formatTrackDuration(Duration d) {
+  String _formatTrackDuration(Duration? d) {
+    // vspodex.app's page doesn't expose track length, so this is usually
+    // unknown until a song has actually started playing.
+    if (d == null) return '--:--';
     final minutes = d.inMinutes;
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
@@ -302,7 +379,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   @override
   Widget build(BuildContext context) {
     final currentSong =
-        _currentSongIndex != null ? _catalog[_currentSongIndex!] : null;
+        (_currentSongIndex != null && _currentSongIndex! < _catalog.length)
+            ? _catalog[_currentSongIndex!]
+            : null;
 
     return Scaffold(
       body: SafeArea(
@@ -310,6 +389,8 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           slivers: [
             SliverToBoxAdapter(child: _buildHeader()),
             if (_hasPermission == false) SliverToBoxAdapter(child: _buildPermissionBanner()),
+            if (_hasNotificationPermission == false)
+              SliverToBoxAdapter(child: _buildNotificationPermissionBanner()),
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) => _buildTrackRow(index),
@@ -364,7 +445,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'Curated by vspodex.app · ${_catalog.length} songs · ${_formatTotalDuration()}',
+            _loadingCatalog
+                ? 'Loading catalog…'
+                : 'Curated by vspodex.app · ${_catalog.length} songs',
             style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
           ),
           const SizedBox(height: 16),
@@ -372,7 +455,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _shufflePlayAll,
+                  onPressed: _loadingCatalog ? null : _shufflePlayAll,
                   icon: const Icon(Icons.shuffle),
                   label: Text(_playing ? 'Shuffling…' : 'Shuffle Play All'),
                   style: FilledButton.styleFrom(
@@ -410,6 +493,35 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           TextButton(
             onPressed: _requestPermission,
             child: const Text('Grant'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationPermissionBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_off_outlined,
+              color: Colors.deepPurpleAccent),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Allow notifications so you can see the playback notification '
+              'and use its Stop button to fully stop the music.',
+              style: TextStyle(fontSize: 12.5, color: Colors.white70),
+            ),
+          ),
+          TextButton(
+            onPressed: _requestNotificationPermission,
+            child: const Text('Allow'),
           ),
         ],
       ),

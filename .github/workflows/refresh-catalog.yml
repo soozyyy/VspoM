@@ -1,0 +1,52 @@
+# Keeps catalog-scraper/catalog.json in sync with vspodex.app automatically,
+# on GitHub's own free servers — no home PC or paid hosting involved. The app
+# fetches this file's raw.githubusercontent.com URL at launch (see
+# lib/main.dart's _loadCatalog()), so a fresh commit here is all it takes for
+# new vspodex.app songs to show up in the app on next open.
+name: Refresh VSpo music catalog
+
+on:
+  schedule:
+    # 03:17 UTC daily — an off-the-hour time so it's not competing with the
+    # herd of jobs everyone else schedules at :00.
+    - cron: '17 3 * * *'
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write # needed to commit the refreshed catalog.json back to the repo
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: catalog-scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Scrape vspodex.app (multiple passes to cover the random sampling)
+        run: node scrape.js
+        env:
+          PASS_COUNT: '20'
+
+      - name: Commit catalog.json if it changed
+        run: |
+          if git diff --quiet -- catalog.json; then
+            echo "No changes to catalog.json — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add catalog.json
+          git commit -m "Auto-refresh VSpo music catalog"
+          git push
