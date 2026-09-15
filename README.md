@@ -4,35 +4,39 @@ A personal, single-user Android app for listening to VSpo! member music (sourced
 
 No server, no backend, no ongoing cost, and nothing needs to run on a home PC. The catalog refreshes itself via a free GitHub Actions schedule; the app itself just plays music.
 
-This is a **personal-use sideload**, not a Play Store app — there's no signing/release pipeline, no app store listing, and no plan to publish it. It's built for one person's own phone.
+This is a **personal-use sideload**, not a Play Store app — no app store listing, no plan to publish it there. It's built for one person's own phone (and anyone else who wants to sideload it the same way).
 
-## Installing it on your phone
+## Installing it on your phone (no PC, no Flutter needed)
 
-There's no download link — you build the APK yourself from this repo, since it isn't published anywhere. Roughly 10 minutes the first time.
+Every push to `main` automatically builds a signed APK on GitHub's own servers and publishes it to this repo's **[Releases page](https://github.com/soozyyy/VspoM/releases/latest)** — that's the easiest way to get the app, and the only thing you need is the phone itself.
 
-1. **Install prerequisites on your computer** (see Requirements below): Flutter SDK, Android SDK/platform tools (installed automatically with Android Studio, or standalone via `sdkmanager`).
-2. **Get the code**:
-   ```
-   git clone https://github.com/soozyyy/VspoM.git
-   cd VspoM/app
-   flutter pub get
-   ```
-3. **Build a release APK**:
-   ```
-   flutter build apk --release
-   ```
-   The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk`. Copy that one file to your phone (USB transfer, Google Drive, Telegram-to-self, whatever's easiest).
-4. **On your phone**, open the APK file from wherever you saved it. Android will ask you to allow installs from that source (Files app, browser, etc.) the first time — approve it, then tap Install. This is the normal "sideloading" flow for any app not from the Play Store.
-5. **First launch — grant two permissions when prompted** (both are one-time, and both matter — the app won't work correctly without them):
+1. On your phone, open the **[latest release](https://github.com/soozyyy/VspoM/releases/latest)** and download `app-release.apk`.
+2. Open the downloaded file. Android will ask you to allow installs from that source (your browser or Files app) the first time — approve it, then tap Install. This is the normal "sideloading" flow for any app that isn't from the Play Store.
+3. **First launch — grant two permissions when prompted** (both are one-time, and both matter — the app won't work correctly without them):
    - **"Draw over other apps"** — lets the app keep playing audio when your screen is off or you switch to another app. Without it, the app only "kind of" works while it's the one on screen.
    - **Notifications** — without this, the persistent playback notification (with its Stop button) never appears, and there's no way to fully stop playback.
-6. Tap **Shuffle Play All** and it starts playing. Turn the screen off, switch apps, whatever — it keeps going.
+4. Tap **Shuffle Play All** and it starts playing. Turn the screen off, switch apps, whatever — it keeps going.
 
-To update later (new features, bug fixes), pull the latest code and repeat step 3-4; you don't need to uninstall first, the new APK just installs over the old one.
+To update later, just download the newer `app-release.apk` from the same Releases page and install it over the old one — every build is signed with the same key, so it installs as a normal update rather than needing an uninstall first.
+
+### Building it yourself instead
+
+If you'd rather build from source (e.g. to test a change before it's pushed), see Requirements below, then:
+
+```
+git clone https://github.com/soozyyy/VspoM.git
+cd VspoM/app
+flutter pub get
+flutter build apk --release
+```
+
+The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk` — copy it to your phone the same way (USB transfer, Google Drive, etc.) and install it as in step 2 above. Without a local `android/key.properties` set up (see "Releasing new builds" below), this builds signed with the debug key instead of the release one, which still installs fine on its own but won't match the signature of Releases-page builds — so pick one signing source and stick with it if you plan to keep updating over the same install.
 
 ## Requirements
 
-**To build the APK (your computer, one-time setup):**
+**To just install and use the app:** an Android phone. That's it — see "Installing it on your phone" above.
+
+**To build the APK yourself instead (your computer, one-time setup):**
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) (this project targets Dart `^3.10.1`, whatever ships with a reasonably current Flutter stable release)
 - Android SDK + platform tools (comes bundled if you install Android Studio; `flutter doctor` will point out anything missing)
 - Windows, macOS, or Linux — Flutter's Android build tooling works the same on all three
@@ -88,16 +92,20 @@ npm run scrape                    # or: PASS_COUNT=20 npm run scrape
 ```
 VspoM/
   README.md
-  .github/workflows/refresh-catalog.yml   # scheduled + manual catalog refresh
+  .github/workflows/
+    refresh-catalog.yml   # scheduled + manual catalog refresh
+    build-apk.yml          # builds a signed APK and publishes it to Releases
   catalog-scraper/
     package.json
     scrape.js         # Playwright scraper against vspodex.app's public /music page
     catalog.json       # generated output, kept in sync by the workflow above
   app/                 # Flutter project (created via `flutter create app`)
     lib/main.dart       # the whole UI + playback control logic
-    android/app/src/main/kotlin/.../
-      MainActivity.kt    # MethodChannel handler
-      OverlayService.kt  # the background-playback engine (see above)
+    android/
+      key.properties.example  # template for the (git-ignored) release signing config
+      app/src/main/kotlin/.../
+        MainActivity.kt    # MethodChannel handler
+        OverlayService.kt  # the background-playback engine (see above)
     assets/
       catalog.json            # bundled fallback copy, used offline / before first successful fetch
       branding/vspo_logo.png  # shown as the header image before anything is playing
@@ -108,7 +116,18 @@ VspoM/
 
 The song list renders roughly 340 thumbnails as you scroll. Thumbnails load through `cached_network_image` rather than a plain network image widget, decoded straight down to their small on-screen size (instead of decoding vspodex.app's full-resolution source image just to shrink it visually) and cached to disk — this is what keeps scrolling smooth and avoids re-downloading every thumbnail each time the app is reopened.
 
-## Building
+## Releasing new builds (maintainer notes)
+
+`.github/workflows/build-apk.yml` builds a release APK on every push to `main` and publishes it to a rolling `latest` GitHub Release — this is what powers the "Installing it on your phone" section above. It needs two repo secrets (**Settings → Secrets and variables → Actions**) so CI can sign the APK with the project's dedicated `vspo-release` keystore instead of a throwaway debug key:
+
+- `VSPO_KEYSTORE_BASE64` — the keystore file, base64-encoded
+- `VSPO_KEYSTORE_PASSWORD` — its store/key password
+
+Both were generated once and are **not** committed to the repo (see `android/key.properties.example` for the format, and `.gitignore` for what's excluded — `android/key.properties` and `android/app/keystore/`). To build locally with the same signing key GitHub Actions uses (so your local builds and Releases-page builds are interchangeable installs), copy `android/key.properties.example` to `android/key.properties`, fill in the real values, and place the matching `vspo-release.keystore` file at `android/app/keystore/vspo-release.keystore`. Without that local setup, `flutter build apk --release` still works — it just falls back to the debug key, which won't match Releases-page builds signature-wise (fine for a one-off test build, not for installing over an existing sideload).
+
+If the keystore is ever lost, a new one can be generated (`keytool -genkeypair ...`) and the secrets updated — but every phone that has an existing install would then need to uninstall it once before the new signature can be installed, since Android treats a change of signing key as an entirely different app for update purposes.
+
+## Building from source
 
 ```
 cd app

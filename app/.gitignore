@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release signing — never commit the real keystore or its passwords.
+# See android/key.properties.example for the format; the real
+# key.properties and keystore file live only on your machine and as a
+# base64 GitHub Actions secret (see .github/workflows/build-apk.yml).
+/android/key.properties
+/android/app/keystore/

@@ -1,0 +1,11 @@
+# Copy this file to key.properties (same folder) and fill in the real
+# values — key.properties is git-ignored on purpose, it's the private
+# signing config and should never be committed.
+#
+# You already have the real vspo-release.keystore file and its passwords
+# (Claude generated and sent them to you directly) — this example just
+# documents the format expected by android/app/build.gradle.kts.
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=vspo-release
+storeFile=keystore/vspo-release.keystore

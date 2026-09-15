@@ -1,0 +1,79 @@
+# Builds a release APK and publishes it to a rolling "latest" GitHub
+# Release, so anyone can just download app-release.apk from the repo's
+# Releases page and sideload it — no Flutter, no PC, no build step needed
+# on their end. Runs entirely on GitHub's free Actions runners.
+#
+# Requires two repo secrets (Settings -> Secrets and variables -> Actions):
+#   VSPO_KEYSTORE_BASE64   - base64 of android/app/keystore/vspo-release.keystore
+#   VSPO_KEYSTORE_PASSWORD - the keystore's store/key password
+# (Claude generated the keystore and sent you the exact values + the
+# command to get the base64 string — see the chat, or android/key.properties
+# on your own machine, which has the real values and is git-ignored.)
+#
+# Using the same dedicated keystore here as for local `flutter build apk
+# --release` builds (see android/app/build.gradle.kts) means every APK,
+# wherever it's built, is signed identically — so installing a newer one
+# over an older one always works as a normal update instead of failing
+# with a signature mismatch.
+name: Build & release APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Restore signing keystore from secret
+        run: |
+          mkdir -p android/app/keystore
+          echo "${{ secrets.VSPO_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore/vspo-release.keystore
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.VSPO_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.VSPO_KEYSTORE_PASSWORD }}
+          keyAlias=vspo-release
+          storeFile=keystore/vspo-release.keystore
+          EOF
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Publish to the "latest" GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: "VspoM (latest build)"
+          body: >
+            Automatically built from the latest main branch by GitHub Actions.
+            Download app-release.apk below and sideload it on your phone — no
+            Flutter or PC needed. See the README for install steps and
+            required permissions.
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: app/build/app/outputs/flutter-apk/app-release.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
