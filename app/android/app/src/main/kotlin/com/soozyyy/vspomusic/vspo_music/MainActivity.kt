@@ -77,9 +77,13 @@ class MainActivity : FlutterActivity() {
 
                 "playVideo" -> {
                     val videoId = call.argument<String>("videoId")
+                    val title = call.argument<String>("title")
+                    val artist = call.argument<String>("artist")
                     val serviceIntent = Intent(this, OverlayService::class.java).apply {
                         action = OverlayService.ACTION_PLAY
                         putExtra(OverlayService.EXTRA_VIDEO_ID, videoId)
+                        putExtra(OverlayService.EXTRA_TITLE, title)
+                        putExtra(OverlayService.EXTRA_ARTIST, artist)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(serviceIntent)

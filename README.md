@@ -57,7 +57,7 @@ There is nothing to sign up for, no account, and no ongoing cost — the whole t
 - Tapping any individual song plays it immediately and continues shuffling from the full catalog afterward, regardless of any active search filter.
 - A mini-player at the bottom shows previous / play-pause / next controls and a draggable progress bar for whatever's currently playing.
 - Background playback survives turning the screen off, opening other apps, and switching away entirely — see "How playback actually works" below for why that's normally hard to pull off.
-- A **Stop** button lives on the persistent playback notification and is the one true "fully stop everything" control; the in-app mini-player intentionally only has pause/resume, matching how most background-audio apps separate "pause for a second" from "I'm done."
+- The persistent playback notification shows the current song's title and artist (not a generic "VSpo Music" label), and its **Stop** button is the one true "fully stop everything" control; the in-app mini-player intentionally only has pause/resume, matching how most background-audio apps separate "pause for a second" from "I'm done."
 - Deliberately excluded: no accounts, no manual song curation, no Add/Edit/Sort UI, no bottom navigation — the catalog is entirely auto-fetched from vspodex.app, so there's nothing to manage by hand.
 
 ## How playback actually works
@@ -67,6 +67,12 @@ YouTube's web player renders video into an Android `SurfaceView`, and Android te
 The fix: `OverlayService` (`app/android/.../OverlayService.kt`) runs as a foreground `Service` and adds a plain `android.webkit.WebView` directly to the `WindowManager` as an invisible 1×1 `TYPE_APPLICATION_OVERLAY` window — a system-level window with no relationship to the app's own Activity window. Backgrounding, closing, or switching away from the app has zero effect on it, so its video Surface (and the audio track riding it) never gets torn down. This is the same mechanism real background-audio apps rely on.
 
 Flutter talks to this native layer through a single `MethodChannel` (`vspo_music/overlay`): `playVideo`, `pause`, `resume`, `seek`, `getPosition`, `stop`, plus permission checks for the overlay and notifications. No `just_audio`, `audio_service`, or `youtube_explode_dart` — playback is 100% native Android, driven from Dart.
+
+### Volume normalization and the ad-related silent-song bug
+
+Different vspodex.app/YouTube uploads are mastered at very different loudness, and YouTube's own per-account "Stable volume" normalization can't be used here since Google blocks signing into an account from a plain embedded WebView. Instead, the JS injected into the overlay's WebView (`OverlayService.kt`) builds a small Web Audio pipeline on every video — a `DynamicsCompressorNode` plus a live auto-gain-control loop reading an `AnalyserNode` — that continuously nudges the output level toward a consistent target. It's an approximation, not true LUFS-matched normalization like Spotify's precomputed loudness data, but it noticeably closes the gap between quiet and loud uploads.
+
+That same injected script also fixed a rare bug where a song would play back completely silent for its full duration before auto-advancing normally. Cause: the original unmute-enforcement script only ran for the first 15 seconds after a song's page loaded. If YouTube inserted an ad and it ran long enough, the real content's `<video>` element (which YouTube sometimes swaps in fresh once an ad ends) would appear after that window had already expired — so it was never unmuted, while position/duration polling looked completely normal since it just reads whatever `<video>` element is current. The script now runs for the entire song instead of timing out, detects element swaps and re-hooks the unmute/audio-graph logic each time, and opportunistically clicks YouTube's "Skip Ad" button when one appears, so ads run shorter and this comes up less often.
 
 ## Keeping the catalog in sync with vspodex.app
 

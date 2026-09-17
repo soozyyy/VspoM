@@ -334,9 +334,16 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       _duration = Duration.zero;
       _dragValueSeconds = null;
     });
+    final song = _catalog[songIndex];
     await _overlayChannel.invokeMethod(
       'playVideo',
-      {'videoId': _catalog[songIndex].videoId},
+      {
+        'videoId': song.videoId,
+        // So the persistent notification can show the actual song/artist
+        // instead of the generic "VSpo Music / Playing in the background".
+        'title': song.title,
+        'artist': song.artist,
+      },
     );
   }
 

@@ -47,6 +47,8 @@ class OverlayService : Service() {
         const val ACTION_PLAY = "com.soozyyy.vspomusic.vspo_music.action.PLAY"
         const val ACTION_STOP = "com.soozyyy.vspomusic.vspo_music.action.STOP"
         const val EXTRA_VIDEO_ID = "videoId"
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_ARTIST = "artist"
         private const val NOTIFICATION_CHANNEL_ID = "vspo_music_overlay"
         private const val NOTIFICATION_ID = 1001
 
@@ -78,8 +80,12 @@ class OverlayService : Service() {
 
             ACTION_PLAY -> {
                 val videoId = intent.getStringExtra(EXTRA_VIDEO_ID)
+                // Falls back to the old generic text if Dart didn't send them
+                // (shouldn't happen, but keeps the notification sane either way).
+                val title = intent.getStringExtra(EXTRA_TITLE) ?: "VSpo Music"
+                val artist = intent.getStringExtra(EXTRA_ARTIST) ?: "Playing in the background"
                 if (videoId != null) {
-                    startForeground(NOTIFICATION_ID, buildNotification())
+                    startForeground(NOTIFICATION_ID, buildNotification(title, artist))
                     showOverlay(videoId)
                 }
             }
@@ -87,7 +93,7 @@ class OverlayService : Service() {
         return START_STICKY
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(title: String, artist: String): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
@@ -118,8 +124,8 @@ class OverlayService : Service() {
         // non-adaptive notification icon (this is what fixed the earlier
         // CannotPostForegroundServiceNotificationException crash).
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("VSpo Music")
-            .setContentText("Playing in the background")
+            .setContentTitle(title)
+            .setContentText(artist)
             .setSmallIcon(R.drawable.ic_bg_service_small)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
@@ -145,16 +151,34 @@ class OverlayService : Service() {
         // only controls the WebView engine's own gesture requirement. Since
         // this overlay is untouchable (FLAG_NOT_TOUCHABLE) there is no way
         // to tap that prompt, so we unmute the underlying <video> element
-        // directly via injected JS instead. Polling because the video
-        // element may not exist yet when the page first finishes loading
-        // (YouTube is a heavy SPA) or may get replaced when playback starts.
+        // directly via injected JS instead.
         //
         // window.__vspoUserPaused tracks whether the user explicitly paused
         // via pause()/resume() below. Without checking it here, this loop
-        // would forcibly call .play() every 500ms for the first ~15s of
-        // every song regardless of what the user just did — which is exactly
-        // what made the pause button look broken (it would silently resume
-        // itself a moment later).
+        // would forcibly call .play() on top of an intentional pause, which
+        // is exactly what made the pause button look broken early on (it
+        // would silently resume itself a moment later).
+        //
+        // This watchdog runs for the WHOLE page load (this one song), not
+        // just the first several seconds — an earlier version stopped after
+        // ~15s, which is what caused rare fully-silent songs: when YouTube
+        // shows a pre-roll/mid-roll ad, it sometimes swaps in a NEW <video>
+        // element once the ad ends and the real content starts. If the
+        // watchdog had already timed out by then, that new element was never
+        // unmuted, so the actual song played back completely silently even
+        // though position/duration polling (which just reads whatever
+        // <video> is current) looked totally normal — matching what was
+        // reported. Detecting element swaps and re-hooking every one fixes
+        // this. A best-effort ad-skip click is also thrown in since it's
+        // free and shortens how often this path is even exercised.
+        //
+        // Also sets up a simple client-side loudness normalizer (Web Audio
+        // dynamics compressor + auto-gain-control loop) on every video
+        // element it hooks — YouTube's own per-account loudness
+        // normalization ("Stable volume") can't be relied on here since
+        // Google blocks signing into an account from a plain embedded
+        // WebView, so different uploads still land at very different
+        // volumes otherwise.
         newWebView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
@@ -162,20 +186,69 @@ class OverlayService : Service() {
                     """
                     (function() {
                       window.__vspoUserPaused = false;
-                      var attempts = 0;
-                      var unmute = setInterval(function() {
-                        attempts++;
+                      window.__vspoHookedVideo = null;
+
+                      function setupAudioGraph(v) {
+                        try {
+                          if (!window.__vspoAudioCtx) {
+                            window.__vspoAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                          }
+                          var ctx = window.__vspoAudioCtx;
+                          if (ctx.state === 'suspended') { ctx.resume().catch(function(e){}); }
+                          var source = ctx.createMediaElementSource(v);
+                          var compressor = ctx.createDynamicsCompressor();
+                          compressor.threshold.value = -24;
+                          compressor.knee.value = 30;
+                          compressor.ratio.value = 12;
+                          compressor.attack.value = 0.003;
+                          compressor.release.value = 0.25;
+                          var gainNode = ctx.createGain();
+                          gainNode.gain.value = 1.0;
+                          var analyser = ctx.createAnalyser();
+                          analyser.fftSize = 2048;
+
+                          source.connect(compressor);
+                          compressor.connect(gainNode);
+                          gainNode.connect(ctx.destination);
+                          compressor.connect(analyser);
+
+                          var data = new Float32Array(analyser.fftSize);
+                          var targetRms = 0.18;
+                          setInterval(function() {
+                            if (v.paused || v.ended) return;
+                            analyser.getFloatTimeDomainData(data);
+                            var sum = 0;
+                            for (var i = 0; i < data.length; i++) sum += data[i] * data[i];
+                            var rms = Math.sqrt(sum / data.length);
+                            if (rms > 0.001) {
+                              var target = Math.max(0.3, Math.min(4, (targetRms / rms) * gainNode.gain.value));
+                              gainNode.gain.value += (target - gainNode.gain.value) * 0.05;
+                            }
+                          }, 300);
+                        } catch (e) {
+                          console.log('vspo audio graph setup failed: ' + e);
+                        }
+                      }
+
+                      setInterval(function() {
                         var v = document.querySelector('video');
+                        if (v && v !== window.__vspoHookedVideo) {
+                          window.__vspoHookedVideo = v;
+                          setupAudioGraph(v);
+                        }
                         if (v) {
                           v.muted = false;
                           v.volume = 1;
-                          if (!window.__vspoUserPaused) {
+                          if (!window.__vspoUserPaused && v.paused) {
                             v.play().catch(function(e) {
                               console.log('play() rejected: ' + e);
                             });
                           }
                         }
-                        if (attempts > 30) clearInterval(unmute);
+                        var skipBtn = document.querySelector(
+                          '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button'
+                        );
+                        if (skipBtn) { try { skipBtn.click(); } catch (e) {} }
                       }, 500);
                     })();
                     """.trimIndent(),
