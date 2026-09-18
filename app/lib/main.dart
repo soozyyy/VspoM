@@ -41,6 +41,15 @@ class Song {
   // song has actually started playing and the native side reports it via
   // getPosition(). Null means "not known yet".
   final Duration? duration;
+  // The artist's real profile picture — usually their YouTube channel
+  // avatar (a yt3.ggpht.com URL), occasionally a Twitch avatar for members
+  // who stream there instead — scraped once per artist from vspodex.app's
+  // own artist page (scrape.js's avatar-crawl phase) and duplicated onto
+  // every song by that artist, same as artistName/artistSlug. Null for a
+  // catalog.json from before this field existed, or if that artist's page
+  // didn't expose one; callers fall back to a song thumbnail in that case
+  // (see _PlaylistScreenState._suggestions).
+  final String? artistAvatarUrl;
 
   const Song({
     required this.videoId,
@@ -49,10 +58,11 @@ class Song {
     required this.thumbnailUrl,
     this.artistSlug,
     this.duration,
+    this.artistAvatarUrl,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
-  // { videoId, title, artistName, artistSlug, thumbnail }
+  // { videoId, title, artistName, artistSlug, thumbnail, artistAvatarUrl }
   factory Song.fromJson(Map<String, dynamic> json) {
     final videoId = json['videoId'] as String;
     return Song(
@@ -68,6 +78,7 @@ class Song {
       duration: json['durationSeconds'] != null
           ? Duration(seconds: json['durationSeconds'] as int)
           : null,
+      artistAvatarUrl: json['artistAvatarUrl'] as String?,
     );
   }
 
@@ -80,6 +91,14 @@ class Song {
     if (query.isEmpty) return true;
     final q = query.toLowerCase().trim();
     if (title.toLowerCase().contains(q)) return true;
+    return artistMatches(q);
+  }
+
+  // Artist-only half of matchesSearch, split out so the search-suggestions
+  // dropdown (_PlaylistScreenState._suggestions) can test "does this song's
+  // artist match?" without re-deriving the romaji/slug logic. Expects `q`
+  // already lowercased/trimmed by the caller.
+  bool artistMatches(String q) {
     if (artist.toLowerCase().contains(q)) return true;
     final slug = artistSlug?.toLowerCase() ?? '';
     if (slug.isEmpty) return false;
@@ -177,6 +196,71 @@ List<Song> _mockCatalog() {
   });
 }
 
+// How far past a plain BoxFit.cover to crop a "zoomed" thumbnail in — see
+// _ThumbnailImage below for why this exists at all.
+const _thumbnailZoomScale = 1.3;
+
+// A cached-network thumbnail with a shared placeholder/error look, used for
+// every video thumbnail and artist avatar in the app (track rows, the mini
+// player, the now-playing header, the search-suggestions dropdown).
+//
+// `zoom`: BoxFit.cover only crops an image to the shape of its box — it
+// can't know that some vspodex.app/YouTube thumbnails have their real
+// content sitting in a thin strip surrounded by black/blurred letterbox
+// bars baked directly into the JPEG pixels. For a small square or circular
+// crop, those bars can survive a plain "cover" fit and make the thumbnail
+// look shrunk/padded instead of filled. Scaling the image up by
+// _thumbnailZoomScale on top of cover crops a fixed margin off all four
+// edges, which reliably cuts the bars away at the cost of a little of the
+// real image — an easy trade for a small list thumbnail or avatar. Real
+// profile photos (artist avatars scraped from vspodex.app's artist page)
+// are usually already tight headshots and don't need it — callers pass
+// zoom: false for those.
+class _ThumbnailImage extends StatelessWidget {
+  const _ThumbnailImage({
+    required this.url,
+    required this.size,
+    this.borderRadius = 4,
+    this.zoom = true,
+    this.errorIcon = Icons.music_note,
+  });
+
+  final String url;
+  final double size;
+  final double borderRadius;
+  final bool zoom;
+  final IconData errorIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      // Decode straight to roughly the size this is ever shown at (x2 for
+      // high-DPI) instead of whatever huge resolution the source serves —
+      // avoids paying full-res decode cost for a tiny on-screen image.
+      memCacheWidth: (size * 2).round(),
+      memCacheHeight: (size * 2).round(),
+      fadeInDuration: const Duration(milliseconds: 80),
+      placeholder: (_, __) => Container(color: Colors.grey.shade800),
+      errorWidget: (_, __, ___) => Container(
+        color: Colors.grey.shade800,
+        child: Icon(errorIcon, color: Colors.white38, size: size * 0.4),
+      ),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: zoom
+            ? Transform.scale(scale: _thumbnailZoomScale, child: image)
+            : image,
+      ),
+    );
+  }
+}
+
 class VspoMusicApp extends StatelessWidget {
   const VspoMusicApp({super.key});
 
@@ -212,6 +296,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   List<Song> _catalog = [];
   bool _loadingCatalog = true;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   List<int> _playOrder = [];
   int _playOrderIndex = 0;
@@ -232,6 +317,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Repaints so the suggestions dropdown appears/disappears as the search
+    // field gains/loses focus (see _suggestions / _buildSuggestions below).
+    _searchFocusNode.addListener(() => setState(() {}));
     _checkPermission();
     _loadCatalog().then((songs) {
       if (!mounted) return;
@@ -250,6 +338,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   void dispose() {
     _progressTimer?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -268,6 +357,95 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       if (_catalog[i].matchesSearch(_searchQuery)) result.add(i);
     }
     return result;
+  }
+
+  // Autocomplete rows shown under the search bar while typing — e.g. typing
+  // "su" surfaces the artist Sumire, using her real profile picture when
+  // catalog.json has one (artistAvatarUrl — vspodex.app's own artist page,
+  // scraped once per artist; usually their YouTube channel avatar), falling
+  // back to one of her song thumbnails for an older catalog.json that
+  // predates that field. Song titles that match directly are listed below
+  // the artists. Modeled after Spotify's search dropdown, minus the
+  // query-completion row and the Follow/+ actions, which don't apply here
+  // (no accounts, no playlists).
+  static const _maxSuggestions = 6;
+
+  List<
+      ({
+        String label,
+        bool isArtist,
+        String thumbnailUrl,
+        String? subtitleArtist,
+        // Whether to crop the thumbnail in tighter than a plain
+        // BoxFit.cover — see _ThumbnailImage. True for a video thumbnail
+        // (always somewhat wide/scenic, looks better zoomed into a small
+        // avatar/tile); false for a real profile photo, which is usually
+        // already a tight headshot and doesn't need it.
+        bool zoom,
+      })> get _suggestions {
+    final q = _searchQuery.toLowerCase().trim();
+    if (q.isEmpty) return const [];
+
+    final seenArtists = <String>{};
+    final artistResults = <({
+      String label,
+      bool isArtist,
+      String thumbnailUrl,
+      String? subtitleArtist,
+      bool zoom,
+    })>[];
+    final titleResults = <({
+      String label,
+      bool isArtist,
+      String thumbnailUrl,
+      String? subtitleArtist,
+      bool zoom,
+    })>[];
+
+    for (final song in _catalog) {
+      // Only test each artist once, on the song where we first see them —
+      // whether the artist matches doesn't depend on which of their songs
+      // we happened to check it against.
+      if (seenArtists.add(song.artist) && song.artistMatches(q)) {
+        final avatar = song.artistAvatarUrl;
+        artistResults.add((
+          label: song.artist,
+          isArtist: true,
+          thumbnailUrl: avatar ?? song.thumbnailUrl,
+          subtitleArtist: null,
+          zoom: avatar == null,
+        ));
+      }
+      if (song.title.toLowerCase().contains(q)) {
+        titleResults.add((
+          label: song.title,
+          isArtist: false,
+          thumbnailUrl: song.thumbnailUrl,
+          subtitleArtist: song.artist,
+          zoom: true,
+        ));
+      }
+    }
+
+    artistResults.sort(
+      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+    );
+    titleResults.sort(
+      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+    );
+
+    return [...artistResults, ...titleResults].take(_maxSuggestions).toList();
+  }
+
+  // Fills the search box with a tapped suggestion and dismisses the
+  // dropdown — this then behaves exactly like typing that text yourself:
+  // the main list below filters to matching songs.
+  void _selectSuggestion(String label) {
+    _searchController.text = label;
+    _searchController.selection =
+        TextSelection.collapsed(offset: label.length);
+    setState(() => _searchQuery = label);
+    _searchFocusNode.unfocus();
   }
 
   @override
@@ -457,6 +635,10 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _buildSearchBar()),
+            if (_searchFocusNode.hasFocus &&
+                _searchQuery.isNotEmpty &&
+                _suggestions.isNotEmpty)
+              SliverToBoxAdapter(child: _buildSuggestions(_suggestions)),
             SliverToBoxAdapter(
               child: _buildHeader(currentSong, visibleIndices.length),
             ),
@@ -498,22 +680,30 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             child: AspectRatio(
               aspectRatio: 1,
               child: currentSong != null
-                  ? CachedNetworkImage(
-                      imageUrl: currentSong.thumbnailUrl,
-                      fit: BoxFit.cover,
-                      // Decode straight to roughly the size this square is
-                      // ever shown at (a couple hundred logical px, times a
-                      // margin for high-DPI screens) instead of whatever
-                      // huge resolution vspodex.app happens to serve —
-                      // avoids paying full-res JPEG/WEBP decode cost for a
-                      // small on-screen image.
-                      memCacheWidth: 640,
-                      fadeInDuration: const Duration(milliseconds: 120),
-                      placeholder: (_, __) => _buildHeaderPlaceholder(),
-                      // Falls back to the placeholder gradient+icon if the
-                      // thumbnail fails to load (e.g. transient network
-                      // hiccup), rather than showing a broken-image icon.
-                      errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                  ? Transform.scale(
+                      // Crops the letterbox bars some thumbnails bake in —
+                      // see _ThumbnailImage's doc comment. This one square
+                      // is sized responsively (fills the screen width) so
+                      // it can't reuse that fixed-size widget directly, but
+                      // gets the same treatment by hand.
+                      scale: _thumbnailZoomScale,
+                      child: CachedNetworkImage(
+                        imageUrl: currentSong.thumbnailUrl,
+                        fit: BoxFit.cover,
+                        // Decode straight to roughly the size this square is
+                        // ever shown at (a couple hundred logical px, times a
+                        // margin for high-DPI screens) instead of whatever
+                        // huge resolution vspodex.app happens to serve —
+                        // avoids paying full-res JPEG/WEBP decode cost for a
+                        // small on-screen image.
+                        memCacheWidth: 640,
+                        fadeInDuration: const Duration(milliseconds: 120),
+                        placeholder: (_, __) => _buildHeaderPlaceholder(),
+                        // Falls back to the placeholder gradient+icon if the
+                        // thumbnail fails to load (e.g. transient network
+                        // hiccup), rather than showing a broken-image icon.
+                        errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                      ),
                     )
                   : _buildHeaderPlaceholder(),
             ),
@@ -581,6 +771,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (value) => setState(() => _searchQuery = value),
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
@@ -604,6 +795,88 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             borderSide: BorderSide.none,
           ),
         ),
+      ),
+    );
+  }
+
+  // The dropdown itself: an artist row per matching artist (circular
+  // avatar + "Artist"), then a row per matching song title (square
+  // thumbnail + "Song • Artist") — mirrors Spotify's search rows.
+  Widget _buildSuggestions(
+    List<
+            ({
+              String label,
+              bool isArtist,
+              String thumbnailUrl,
+              String? subtitleArtist,
+              bool zoom,
+            })>
+        suggestions,
+  ) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final s in suggestions)
+            InkWell(
+              onTap: () => _selectSuggestion(s.label),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    // Circular for an artist avatar, rounded square for a
+                    // song thumbnail — same visual language as the Spotify
+                    // reference. zoom is off for a real artist avatar
+                    // (already a tight headshot) and on for anything
+                    // sourced from a video thumbnail (see _ThumbnailImage).
+                    _ThumbnailImage(
+                      url: s.thumbnailUrl,
+                      size: 40,
+                      borderRadius: s.isArtist ? 20 : 4,
+                      zoom: s.zoom,
+                      errorIcon: s.isArtist ? Icons.person : Icons.music_note,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            s.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            s.isArtist ? 'Artist' : 'Song • ${s.subtitleArtist}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -682,39 +955,16 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     final isCurrent = _currentSongIndex == index;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: CachedNetworkImage(
-          imageUrl: song.thumbnailUrl,
-          width: 48,
-          height: 48,
-          fit: BoxFit.cover,
-          // The single biggest fix for the list-scrolling jank: vspodex.app
-          // thumbnails are often 1280x720+, and decoding that in full for
-          // every one of ~340 rows just to show a 48x48 icon (repeatedly,
-          // as rows scroll in and out) is what was costing frames. Capping
-          // the decode target to roughly the on-screen size (x2 for
-          // high-DPI) makes each decode tiny and keeps far more thumbnails
-          // resident in the image cache at once, which also means less
-          // re-decoding on every fling. Disk caching (built into this
-          // package) also means these aren't re-downloaded from scratch
-          // every time the app is reopened.
-          memCacheWidth: 96,
-          memCacheHeight: 96,
-          fadeInDuration: const Duration(milliseconds: 80),
-          placeholder: (_, __) => Container(
-            width: 48,
-            height: 48,
-            color: Colors.grey.shade800,
-          ),
-          errorWidget: (_, __, ___) => Container(
-            width: 48,
-            height: 48,
-            color: Colors.grey.shade800,
-            child: const Icon(Icons.music_note, color: Colors.white38, size: 20),
-          ),
-        ),
-      ),
+      // The single biggest fix for the list-scrolling jank: vspodex.app
+      // thumbnails are often 1280x720+, and decoding that in full for every
+      // one of ~340 rows just to show a 48x48 icon (repeatedly, as rows
+      // scroll in and out) is what was costing frames. _ThumbnailImage caps
+      // the decode target to roughly the on-screen size, which keeps far
+      // more thumbnails resident in the image cache at once — also less
+      // re-decoding on every fling. Disk caching (built into
+      // cached_network_image) also means these aren't re-downloaded from
+      // scratch every time the app is reopened.
+      leading: _ThumbnailImage(url: song.thumbnailUrl, size: 48),
       title: Text(
         song.title,
         maxLines: 1,
@@ -778,28 +1028,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 child: Row(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: CachedNetworkImage(
-                        imageUrl: song.thumbnailUrl,
-                        width: 44,
-                        height: 44,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 88,
-                        memCacheHeight: 88,
-                        fadeInDuration: const Duration(milliseconds: 80),
-                        placeholder: (_, __) => Container(
-                          width: 44,
-                          height: 44,
-                          color: Colors.grey.shade800,
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          width: 44,
-                          height: 44,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ),
+                    _ThumbnailImage(url: song.thumbnailUrl, size: 44),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(

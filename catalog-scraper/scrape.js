@@ -25,6 +25,14 @@
 //   npx playwright install chromium   # first time only
 //   npm run scrape                    # runs PASS_COUNT passes, writes catalog.json
 //
+// After the track passes, it does a second, much smaller crawl: one page
+// load per UNIQUE artist (a few dozen, not 343) against vspodex.app's own
+// artist page — e.g. /music/artist/yakumo-beni — to grab their real profile
+// picture (`.ts-music-artist__avatar img`). That's usually their YouTube
+// channel avatar (a yt3.ggpht.com URL); a few members who stream primarily
+// on Twitch show a Twitch avatar there instead — either way it's their real
+// pfp, not a video thumbnail. Set SKIP_AVATARS=1 to skip this phase.
+//
 // Output: catalog.json in this folder, e.g.:
 // [
 //   {
@@ -32,7 +40,8 @@
 //     "title": "星座になれたら",
 //     "artistName": "藍沢エマ / Aizawa Ema",
 //     "artistSlug": "aizawa-ema",
-//     "thumbnail": "https://i.ytimg.com/vi/I84zUHUvHWE/maxresdefault.jpg"
+//     "thumbnail": "https://i.ytimg.com/vi/I84zUHUvHWE/maxresdefault.jpg",
+//     "artistAvatarUrl": "https://yt3.ggpht.com/...=s96-c-k-c0x00ffffff-no-rj"
 //   },
 //   ...
 // ]
@@ -50,6 +59,11 @@ const SCROLL_WAIT_MS = 600;
 // Override with PASS_COUNT=N in the environment (used by the scheduled
 // GitHub Actions run to do a thorough sweep unattended).
 const PASS_COUNT = Number(process.env.PASS_COUNT) || 10;
+const ARTIST_URL = (slug) => `https://www.vspodex.app/zh-Hant/music/artist/${slug}`;
+const AVATAR_TIMEOUT_MS = 15000;
+// Set SKIP_AVATARS=1 to skip the per-artist avatar crawl entirely (e.g. for
+// a quick local test run where you don't care about that field yet).
+const SKIP_AVATARS = process.env.SKIP_AVATARS === '1';
 
 async function extractVisibleTracks(page) {
   return page.evaluate(() => {
@@ -123,6 +137,65 @@ async function runOnePass(browser, tracks) {
   }
 }
 
+// Grabs one artist's real profile picture from their vspodex.app artist
+// page (not the /music grid, which only has song thumbnails). Returns null
+// on any failure (missing element, timeout, network hiccup) rather than
+// throwing, so one bad artist page doesn't abort the whole run — the caller
+// falls back to whatever avatar (if any) was already in catalog.json.
+async function scrapeArtistAvatar(browser, slug) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(ARTIST_URL(slug), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('.ts-music-artist__avatar img', { timeout: AVATAR_TIMEOUT_MS });
+    return await page.$eval('.ts-music-artist__avatar img', (img) => img.getAttribute('src'));
+  } catch (e) {
+    console.log(`  could not get avatar for ${slug}: ${e.message}`);
+    return null;
+  } finally {
+    await page.close();
+  }
+}
+
+// Visits each unique artist's page once and attaches artistAvatarUrl to
+// every track by that artist in `tracks`. Mutates `tracks` in place.
+async function fillArtistAvatars(browser, tracks) {
+  const slugs = new Set();
+  for (const t of tracks.values()) {
+    if (t.artistSlug) slugs.add(t.artistSlug);
+  }
+
+  // Seed with whatever avatars are already in the map, so a transient
+  // failure this run doesn't blank out a previously-captured one.
+  const avatarBySlug = new Map();
+  for (const t of tracks.values()) {
+    if (t.artistSlug && t.artistAvatarUrl && !avatarBySlug.has(t.artistSlug)) {
+      avatarBySlug.set(t.artistSlug, t.artistAvatarUrl);
+    }
+  }
+
+  console.log(`\nFetching artist avatars for ${slugs.size} unique artists...`);
+  let i = 0;
+  for (const slug of slugs) {
+    i++;
+    const avatar = await scrapeArtistAvatar(browser, slug);
+    if (avatar) {
+      avatarBySlug.set(slug, avatar);
+      console.log(`  [${i}/${slugs.size}] ${slug}: ok`);
+    } else {
+      console.log(
+        `  [${i}/${slugs.size}] ${slug}: none found ` +
+          `(${avatarBySlug.has(slug) ? 'keeping previous avatar' : 'no avatar yet for this artist'})`,
+      );
+    }
+  }
+
+  for (const t of tracks.values()) {
+    if (t.artistSlug && avatarBySlug.has(t.artistSlug)) {
+      t.artistAvatarUrl = avatarBySlug.get(t.artistSlug);
+    }
+  }
+}
+
 async function main() {
   const tracks = new Map(); // videoId -> track
   let previousCount = 0;
@@ -146,6 +219,12 @@ async function main() {
     for (let pass = 1; pass <= PASS_COUNT; pass++) {
       const added = await runOnePass(browser, tracks);
       console.log(`pass ${pass}/${PASS_COUNT}: +${added} new, ${tracks.size} unique so far`);
+    }
+
+    if (SKIP_AVATARS) {
+      console.log('\nSKIP_AVATARS=1 set — skipping the per-artist avatar crawl.');
+    } else {
+      await fillArtistAvatars(browser, tracks);
     }
   } finally {
     await browser.close();
