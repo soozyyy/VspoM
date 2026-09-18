@@ -196,66 +196,65 @@ List<Song> _mockCatalog() {
   });
 }
 
-// How far past a plain BoxFit.cover to crop a "zoomed" thumbnail in — see
-// _ThumbnailImage below for why this exists at all.
+// Zoom scale used only by the big now-playing header thumbnail (still an
+// AspectRatio(1) square there) — kept as a named constant for that one call
+// site. NOT used by _ThumbnailImage below anymore: an earlier version of
+// this file zoomed every thumbnail in further, on the theory that some
+// vspodex.app/YouTube thumbnails had black letterbox bars baked into the
+// JPEG pixels. Checked that directly (sampled actual thumbnail pixels) —
+// they don't. The real cause of "squished" list thumbnails was simpler:
+// they were being forced into a square box, cropping ~44% off a 16:9 video
+// thumbnail's width. _ThumbnailImage now takes an explicit width/height so
+// callers can size it to match the source's actual aspect ratio instead.
 const _thumbnailZoomScale = 1.3;
 
 // A cached-network thumbnail with a shared placeholder/error look, used for
 // every video thumbnail and artist avatar in the app (track rows, the mini
-// player, the now-playing header, the search-suggestions dropdown).
-//
-// `zoom`: BoxFit.cover only crops an image to the shape of its box — it
-// can't know that some vspodex.app/YouTube thumbnails have their real
-// content sitting in a thin strip surrounded by black/blurred letterbox
-// bars baked directly into the JPEG pixels. For a small square or circular
-// crop, those bars can survive a plain "cover" fit and make the thumbnail
-// look shrunk/padded instead of filled. Scaling the image up by
-// _thumbnailZoomScale on top of cover crops a fixed margin off all four
-// edges, which reliably cuts the bars away at the cost of a little of the
-// real image — an easy trade for a small list thumbnail or avatar. Real
-// profile photos (artist avatars scraped from vspodex.app's artist page)
-// are usually already tight headshots and don't need it — callers pass
-// zoom: false for those.
+// player, the search-suggestions dropdown). Pass width/height matching the
+// source image's real aspect ratio (16:9 for a video thumbnail, square for
+// a real profile photo) so BoxFit.cover has little or nothing to crop.
 class _ThumbnailImage extends StatelessWidget {
   const _ThumbnailImage({
     required this.url,
-    required this.size,
+    required this.width,
+    required this.height,
     this.borderRadius = 4,
-    this.zoom = true,
     this.errorIcon = Icons.music_note,
   });
 
   final String url;
-  final double size;
+  final double width;
+  final double height;
   final double borderRadius;
-  final bool zoom;
   final IconData errorIcon;
 
   @override
   Widget build(BuildContext context) {
-    final image = CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      // Decode straight to roughly the size this is ever shown at (x2 for
-      // high-DPI) instead of whatever huge resolution the source serves —
-      // avoids paying full-res decode cost for a tiny on-screen image.
-      memCacheWidth: (size * 2).round(),
-      memCacheHeight: (size * 2).round(),
-      fadeInDuration: const Duration(milliseconds: 80),
-      placeholder: (_, __) => Container(color: Colors.grey.shade800),
-      errorWidget: (_, __, ___) => Container(
-        color: Colors.grey.shade800,
-        child: Icon(errorIcon, color: Colors.white38, size: size * 0.4),
-      ),
-    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: SizedBox(
-        width: size,
-        height: size,
-        child: zoom
-            ? Transform.scale(scale: _thumbnailZoomScale, child: image)
-            : image,
+        width: width,
+        height: height,
+        child: CachedNetworkImage(
+          imageUrl: url,
+          fit: BoxFit.cover,
+          // Decode straight to roughly the size this is ever shown at (x2
+          // for high-DPI) instead of whatever huge resolution the source
+          // serves — avoids paying full-res decode cost for a tiny
+          // on-screen image.
+          memCacheWidth: (width * 2).round(),
+          memCacheHeight: (height * 2).round(),
+          fadeInDuration: const Duration(milliseconds: 80),
+          placeholder: (_, __) => Container(color: Colors.grey.shade800),
+          errorWidget: (_, __, ___) => Container(
+            color: Colors.grey.shade800,
+            child: Icon(
+              errorIcon,
+              color: Colors.white38,
+              size: (width < height ? width : height) * 0.4,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -376,12 +375,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         bool isArtist,
         String thumbnailUrl,
         String? subtitleArtist,
-        // Whether to crop the thumbnail in tighter than a plain
-        // BoxFit.cover — see _ThumbnailImage. True for a video thumbnail
-        // (always somewhat wide/scenic, looks better zoomed into a small
-        // avatar/tile); false for a real profile photo, which is usually
-        // already a tight headshot and doesn't need it.
-        bool zoom,
       })> get _suggestions {
     final q = _searchQuery.toLowerCase().trim();
     if (q.isEmpty) return const [];
@@ -392,14 +385,12 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       bool isArtist,
       String thumbnailUrl,
       String? subtitleArtist,
-      bool zoom,
     })>[];
     final titleResults = <({
       String label,
       bool isArtist,
       String thumbnailUrl,
       String? subtitleArtist,
-      bool zoom,
     })>[];
 
     for (final song in _catalog) {
@@ -407,13 +398,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       // whether the artist matches doesn't depend on which of their songs
       // we happened to check it against.
       if (seenArtists.add(song.artist) && song.artistMatches(q)) {
-        final avatar = song.artistAvatarUrl;
         artistResults.add((
           label: song.artist,
           isArtist: true,
-          thumbnailUrl: avatar ?? song.thumbnailUrl,
+          thumbnailUrl: song.artistAvatarUrl ?? song.thumbnailUrl,
           subtitleArtist: null,
-          zoom: avatar == null,
         ));
       }
       if (song.title.toLowerCase().contains(q)) {
@@ -422,7 +411,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           isArtist: false,
           thumbnailUrl: song.thumbnailUrl,
           subtitleArtist: song.artist,
-          zoom: true,
         ));
       }
     }
@@ -800,7 +788,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   }
 
   // The dropdown itself: an artist row per matching artist (circular
-  // avatar + "Artist"), then a row per matching song title (square
+  // avatar + "Artist"), then a row per matching song title (16:9 video
   // thumbnail + "Song • Artist") — mirrors Spotify's search rows.
   Widget _buildSuggestions(
     List<
@@ -809,7 +797,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
               bool isArtist,
               String thumbnailUrl,
               String? subtitleArtist,
-              bool zoom,
             })>
         suggestions,
   ) {
@@ -833,16 +820,16 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 ),
                 child: Row(
                   children: [
-                    // Circular for an artist avatar, rounded square for a
-                    // song thumbnail — same visual language as the Spotify
-                    // reference. zoom is off for a real artist avatar
-                    // (already a tight headshot) and on for anything
-                    // sourced from a video thumbnail (see _ThumbnailImage).
+                    // Circular 1:1 for an artist avatar (a real profile
+                    // photo, already roughly square) vs. a 16:9 rectangle
+                    // for a song thumbnail (an actual video thumbnail) —
+                    // matching each source's real aspect ratio instead of
+                    // cropping a video thumbnail down to a square.
                     _ThumbnailImage(
                       url: s.thumbnailUrl,
-                      size: 40,
+                      width: s.isArtist ? 40 : 57,
+                      height: s.isArtist ? 40 : 32,
                       borderRadius: s.isArtist ? 20 : 4,
-                      zoom: s.zoom,
                       errorIcon: s.isArtist ? Icons.person : Icons.music_note,
                     ),
                     const SizedBox(width: 12),
@@ -955,16 +942,24 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     final isCurrent = _currentSongIndex == index;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      // The single biggest fix for the list-scrolling jank: vspodex.app
+      // 16:9 to match the actual video thumbnail's shape — a square here
+      // would crop off ~44% of the width (this used to be size: 48, i.e.
+      // square, which is what made these look squished/cropped).
+      //
+      // Also the single biggest fix for the list-scrolling jank: vspodex.app
       // thumbnails are often 1280x720+, and decoding that in full for every
-      // one of ~340 rows just to show a 48x48 icon (repeatedly, as rows
+      // one of ~340 rows just to show a small thumbnail (repeatedly, as rows
       // scroll in and out) is what was costing frames. _ThumbnailImage caps
       // the decode target to roughly the on-screen size, which keeps far
       // more thumbnails resident in the image cache at once — also less
       // re-decoding on every fling. Disk caching (built into
       // cached_network_image) also means these aren't re-downloaded from
       // scratch every time the app is reopened.
-      leading: _ThumbnailImage(url: song.thumbnailUrl, size: 48),
+      leading: _ThumbnailImage(
+        url: song.thumbnailUrl,
+        width: 85,
+        height: 48,
+      ),
       title: Text(
         song.title,
         maxLines: 1,
@@ -1028,7 +1023,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 child: Row(
                   children: [
-                    _ThumbnailImage(url: song.thumbnailUrl, size: 44),
+                    // 16:9, matching the video thumbnail's real shape —
+                    // see the track-row thumbnail's comment for why.
+                    _ThumbnailImage(
+                      url: song.thumbnailUrl,
+                      width: 78,
+                      height: 44,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
