@@ -79,11 +79,17 @@ class MainActivity : FlutterActivity() {
                     val videoId = call.argument<String>("videoId")
                     val title = call.argument<String>("title")
                     val artist = call.argument<String>("artist")
+                    // Null for a song whose catalog entry predates the
+                    // loudness scrape. NaN is the "unknown" marker the
+                    // service reads back, and the injected script treats
+                    // that as gain 1.0 (leave the level alone).
+                    val loudnessDb = call.argument<Double>("loudnessDb")
                     val serviceIntent = Intent(this, OverlayService::class.java).apply {
                         action = OverlayService.ACTION_PLAY
                         putExtra(OverlayService.EXTRA_VIDEO_ID, videoId)
                         putExtra(OverlayService.EXTRA_TITLE, title)
                         putExtra(OverlayService.EXTRA_ARTIST, artist)
+                        putExtra(OverlayService.EXTRA_LOUDNESS_DB, loudnessDb ?: Double.NaN)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(serviceIntent)

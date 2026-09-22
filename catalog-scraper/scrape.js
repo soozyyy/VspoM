@@ -48,6 +48,7 @@
 
 import { chromium } from 'playwright';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { fetchLoudnessDb } from './loudness.js';
 
 const MUSIC_URL = 'https://www.vspodex.app/zh-Hant/music';
 const EXPECTED_TOTAL = 343; // shown on the page as "343 首" at time of writing; just a hint, not enforced
@@ -64,6 +65,13 @@ const AVATAR_TIMEOUT_MS = 15000;
 // Set SKIP_AVATARS=1 to skip the per-artist avatar crawl entirely (e.g. for
 // a quick local test run where you don't care about that field yet).
 const SKIP_AVATARS = process.env.SKIP_AVATARS === '1';
+// Set SKIP_LOUDNESS=1 to skip the per-song loudness pass (see fillLoudness()
+// below), same idea as SKIP_AVATARS.
+const SKIP_LOUDNESS = process.env.SKIP_LOUDNESS === '1';
+// How many watch pages to request at once in the loudness pass. These are
+// plain HTML GETs, not browser page loads, so they're cheap — but stay
+// polite rather than firing all ~345 at once.
+const LOUDNESS_CONCURRENCY = 8;
 
 async function extractVisibleTracks(page) {
   return page.evaluate(() => {
@@ -196,6 +204,43 @@ async function fillArtistAvatars(browser, tracks) {
   }
 }
 
+// Attaches loudnessDb to every track that doesn't already have one.
+// Mutates `tracks` in place.
+//
+// Deliberately INCREMENTAL: songs already carrying a value are skipped
+// entirely, so the first run does ~345 requests and every nightly run after
+// it does only as many as there are new songs — usually zero. A song's
+// loudness never changes unless the uploader replaces the video, so there's
+// nothing to refresh.
+async function fillLoudness(tracks) {
+  const todo = [...tracks.values()].filter(
+    (t) => typeof t.loudnessDb !== 'number',
+  );
+  if (todo.length === 0) {
+    console.log('\nLoudness: every track already has a value — nothing to fetch.');
+    return;
+  }
+
+  console.log(`\nFetching loudness for ${todo.length} track(s) without one...`);
+  let ok = 0;
+  for (let i = 0; i < todo.length; i += LOUDNESS_CONCURRENCY) {
+    const chunk = todo.slice(i, i + LOUDNESS_CONCURRENCY);
+    const results = await Promise.all(chunk.map((t) => fetchLoudnessDb(t.videoId)));
+    results.forEach((db, j) => {
+      if (db !== null) {
+        chunk[j].loudnessDb = db;
+        ok++;
+      }
+    });
+    console.log(`  ${Math.min(i + chunk.length, todo.length)}/${todo.length} done`);
+  }
+  console.log(
+    `Loudness: got ${ok}/${todo.length}. ` +
+      `${todo.length - ok} had none (will be retried next run; the app plays ` +
+      `those at YouTube's own level).`,
+  );
+}
+
 async function main() {
   const tracks = new Map(); // videoId -> track
   let previousCount = 0;
@@ -228,6 +273,14 @@ async function main() {
     }
   } finally {
     await browser.close();
+  }
+
+  // After the browser is closed — this pass is plain HTTP, it doesn't need
+  // Playwright at all.
+  if (SKIP_LOUDNESS) {
+    console.log('\nSKIP_LOUDNESS=1 set — skipping the per-song loudness pass.');
+  } else {
+    await fillLoudness(tracks);
   }
 
   const result = Array.from(tracks.values()).sort((a, b) => {

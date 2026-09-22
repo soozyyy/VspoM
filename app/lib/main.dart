@@ -50,6 +50,16 @@ class Song {
   // didn't expose one; callers fall back to a song thumbnail in that case
   // (see _PlaylistScreenState._suggestions).
   final String? artistAvatarUrl;
+  // YouTube's own measured loudness for this upload, in dB relative to its
+  // -14 LUFS reference — positive means louder than reference. Scraped once
+  // per song by catalog-scraper/scrape.js straight out of the watch page
+  // (YouTube measures every upload at ingest; nothing is downloaded or
+  // analyzed on our side). Handed to the native player, which uses it to put
+  // every song out at the same level instead of guessing from the first
+  // second of audio — see OverlayService.injectionScript(). Null for a song
+  // added to the catalog since the last scrape run; the player treats that
+  // as "leave the level alone".
+  final double? loudnessDb;
 
   const Song({
     required this.videoId,
@@ -59,6 +69,7 @@ class Song {
     this.artistSlug,
     this.duration,
     this.artistAvatarUrl,
+    this.loudnessDb,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
@@ -79,6 +90,7 @@ class Song {
           ? Duration(seconds: json['durationSeconds'] as int)
           : null,
       artistAvatarUrl: json['artistAvatarUrl'] as String?,
+      loudnessDb: (json['loudnessDb'] as num?)?.toDouble(),
     );
   }
 
@@ -509,6 +521,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         // instead of the generic "VSpo Music / Playing in the background".
         'title': song.title,
         'artist': song.artist,
+        // Drives volume normalization on the native side. Null is fine —
+        // the player falls back to leaving the level untouched.
+        'loudnessDb': song.loudnessDb,
       },
     );
   }

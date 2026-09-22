@@ -54,6 +54,13 @@ class OverlayService : Service() {
         const val EXTRA_VIDEO_ID = "videoId"
         const val EXTRA_TITLE = "title"
         const val EXTRA_ARTIST = "artist"
+        // YouTube's own measured integrated loudness for this video, in dB
+        // relative to its -14 LUFS reference (positive = louder than
+        // reference). Scraped per-song into catalog.json and carried through
+        // Dart -> here -> the injected script, where it sets the playback
+        // gain. Absent/NaN means "unknown", which the script treats as
+        // gain 1.0 (no change).
+        const val EXTRA_LOUDNESS_DB = "loudnessDb"
         private const val NOTIFICATION_CHANNEL_ID = "vspo_music_overlay"
         private const val NOTIFICATION_ID = 1001
 
@@ -81,6 +88,12 @@ class OverlayService : Service() {
     private var webView: WebView? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Loudness of the song currently being loaded. Read by injectionScript()
+    // so every injection for this page (onPageStarted, onPageFinished, and
+    // the scheduled re-pokes) carries the same value. Set before loadVideo()
+    // navigates, so it's always in sync with whatever page is loading.
+    private var currentLoudnessDb: Double? = null
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -103,9 +116,13 @@ class OverlayService : Service() {
                 // (shouldn't happen, but keeps the notification sane either way).
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "VSpo Music"
                 val artist = intent.getStringExtra(EXTRA_ARTIST) ?: "Playing in the background"
+                // NaN is the "not known" marker — a song added to the catalog
+                // since the last scrape run simply won't have a value yet.
+                val loudnessDb = intent.getDoubleExtra(EXTRA_LOUDNESS_DB, Double.NaN)
+                    .takeIf { !it.isNaN() }
                 if (videoId != null) {
                     startForeground(NOTIFICATION_ID, buildNotification(title, artist))
-                    showOverlay(videoId)
+                    showOverlay(videoId, loudnessDb)
                 }
             }
         }
@@ -162,6 +179,9 @@ class OverlayService : Service() {
      * Web Audio graph to the same <video> element.
      */
     private fun injectionScript(): String {
+        // Interpolated into the script below as a JS number literal, or the
+        // literal `null` when the catalog has no loudness for this song.
+        val loudnessLiteral = currentLoudnessDb?.toString() ?: "null"
         return """
         (function() {
           if (window.__vspoInitialized) { return; }
@@ -170,6 +190,20 @@ class OverlayService : Service() {
           window.__vspoHookedVideo = null;
           window.__vspoWasAd = false;
           var tickCount = 0;
+
+          // How loud THIS song is, in dB relative to YouTube's -14 LUFS
+          // reference. Baked in from Kotlin per page load; null when the
+          // catalog has no value for this song yet.
+          var loudnessDb = $loudnessLiteral;
+          // Calibration knob: shifts the whole app's output level without
+          // touching any of the logic below. 0 = match YouTube's reference.
+          // Raise it if everything feels too quiet on your phone.
+          var TARGET_OFFSET_DB = 0;
+          // Bounds on what we'll do to any one song. Real catalog values land
+          // around 0.37x (loudest) to 2.0x (quietest), so these only catch
+          // garbage data.
+          var MIN_GAIN = 0.25;
+          var MAX_GAIN = 4.0;
 
           // Everything logs through here (tagged so it's easy to grep in
           // Logcat).
@@ -207,113 +241,87 @@ class OverlayService : Service() {
                 });
               }
               var source = ctx.createMediaElementSource(v);
-              var compressor = ctx.createDynamicsCompressor();
-              compressor.threshold.value = -24;
-              compressor.knee.value = 30;
-              compressor.ratio.value = 12;
-              // A very fast attack (the old 3ms) reacts within a single
-              // wave cycle on bass-heavy transients (kicks, bass hits),
-              // which is a known way for a dynamics processor to introduce
-              // its own audible distortion/artifacts rather than just
-              // smoothing loudness. A slower attack still catches sustained
-              // loud passages fine, just without chasing every short
-              // transient — this is the more likely fix for the split-
-              // second "stutter"/glitch, since that's exactly the kind of
-              // artifact a too-fast compressor attack produces.
-              compressor.attack.value = 0.02;
-              compressor.release.value = 0.3;
               var gainNode = ctx.createGain();
-              gainNode.gain.value = 1.0;
 
-              // Safety limiter, AFTER the boost gain and BEFORE the
-              // speakers. Without this, boosting a quiet song by several
-              // times its original level could push its louder moments
-              // past full scale (amplitude > 1.0) — Web Audio doesn't clamp
-              // that gracefully, it just hard-clips the waveform flat,
-              // which is exactly the harsh "broken speaker" / white-noise
-              // crackle that showed up on some boosted songs. This is a
-              // second DynamicsCompressorNode tuned as a brick-wall
-              // limiter (very low threshold, high ratio, near-instant
-              // attack) so anything the gain stage pushes too high gets
-              // caught and smoothly capped instead of clipping.
+              // Safety limiter, AFTER the gain and BEFORE the speakers.
+              // Without this, boosting a quiet song could push its louder
+              // moments past full scale (amplitude > 1.0) — Web Audio
+              // doesn't clamp that gracefully, it just hard-clips the
+              // waveform flat, which is the harsh "broken speaker" crackle
+              // that showed up on some boosted songs. A DynamicsCompressor
+              // tuned as a brick-wall limiter (very low threshold, high
+              // ratio, fast attack) caps overshoot smoothly instead.
+              //
+              // This is the ONLY dynamics processing left. The old chain
+              // also ran a second compressor (threshold -24, ratio 12) on
+              // the way in, which squashed loud passages WITHIN a song —
+              // the opposite of the goal here, which is to even out volume
+              // BETWEEN songs while leaving each song's own dynamics alone.
               var limiter = ctx.createDynamicsCompressor();
               limiter.threshold.value = -1;
               limiter.knee.value = 0;
               limiter.ratio.value = 20;
-              // 1ms was likely too fast here too — sub-2ms attack times on
-              // a dynamics node are a well-known source of audible
-              // artifacts on their own (it can start clamping mid wave-
-              // cycle on bass frequencies). 3ms is still fast enough to
-              // catch the boost stage overshooting before it clips, just
-              // without being fast enough to distort on its own.
+              // Sub-2ms attack times on a dynamics node are a known source
+              // of audible artifacts (they can start clamping mid wave-
+              // cycle on bass frequencies). 3ms still catches overshoot
+              // before it clips without distorting on its own.
               limiter.attack.value = 0.003;
               limiter.release.value = 0.15;
 
-              // Smaller FFT size than before (1024 vs 2048) — halves the
-              // amount of data pulled off the audio thread and summed on
-              // the main thread every 300ms tick. Simpler/cheaper per-tick
-              // work for the same RMS estimate; not perceptibly less
-              // accurate for a loudness reading like this.
-              var analyser = ctx.createAnalyser();
-              analyser.fftSize = 1024;
-
-              source.connect(compressor);
-              compressor.connect(gainNode);
+              source.connect(gainNode);
               gainNode.connect(limiter);
               limiter.connect(ctx.destination);
-              // Measure from BEFORE the boost gain (straight off the
-              // within-song compressor), since that's the "how loud is
-              // this song really" reading we want the leveler to react to
-              // — measuring after the limiter would make loud songs look
-              // artificially level and confuse the boost decision.
-              compressor.connect(analyser);
 
-              // Boost-only loudness leveling. Requested explicitly: quiet
-              // uploads should get raised toward a target level, but
-              // already-adequate/loud uploads should NOT get turned down
-              // (gain floor is 1.0x, never less). The gain is decided
-              // mostly ONCE from a short initial sampling window right at
-              // the start of the song, then only ever creeps upward slowly
-              // afterward if needed — this is what stops the audible
-              // "pumping" the old version had, since that recalculated and
-              // re-applied a new gain value every single 300ms tick for the
-              // whole song. The limiter above is what now keeps this boost
-              // from ever audibly clipping, even at the top of its range.
-              var data = new Float32Array(analyser.fftSize);
-              var targetRms = 0.13;
-              var maxGain = 3.0;
-              var gain = 1.0;
-              var sampleSum = 0, sampleCount = 0;
-              var initialized = false;
-              setInterval(function() {
-                if (v.paused || v.ended) return;
-                analyser.getFloatTimeDomainData(data);
-                var sum = 0;
-                for (var i = 0; i < data.length; i++) sum += data[i] * data[i];
-                var rms = Math.sqrt(sum / data.length);
-                if (rms < 0.002) return; // near-silence (intro/outro) - don't let it skew the reading
-                if (!initialized) {
-                  sampleSum += rms;
-                  sampleCount++;
-                  if (sampleCount >= 5) {
-                    var avgRms = sampleSum / sampleCount;
-                    gain = Math.max(1.0, Math.min(maxGain, targetRms / avgRms));
-                    gainNode.gain.setTargetAtTime(gain, ctx.currentTime, 0.8);
-                    initialized = true;
-                    log('initial gain set to ' + gain.toFixed(2) + ' (avgRms=' + avgRms.toFixed(4) + ')');
-                  }
-                  return;
-                }
-                // Occasional gentle upward-only correction afterward (e.g. a
-                // song that starts loud then goes quiet later) - this can
-                // never reduce gain below what's already set, so it can't
-                // reintroduce audible pumping.
-                var suggested = Math.max(1.0, Math.min(maxGain, targetRms / rms));
-                if (suggested > gain + 0.05) {
-                  gain += (suggested - gain) * 0.02;
-                  gainNode.gain.setTargetAtTime(gain, ctx.currentTime, 1.5);
-                }
-              }, 300);
+              // ---- loudness normalization -------------------------------
+              // One gain, decided once, held for the whole song. No
+              // measuring, no sampling window, no mid-song adjustment —
+              // the number comes from YouTube's own analysis of the entire
+              // track, which is strictly better than anything we could
+              // estimate from the first second and a half of audio.
+              //
+              // The v.volume term is what makes this correct without us
+              // having to know whether YouTube already normalized this
+              // page. YouTube levels loud uploads down by setting
+              // video.volume to 10^(-loudnessDb/20), and never boosts quiet
+              // ones. So:
+              //   - if it DID normalize, v.volume cancels the loudness term
+              //     out and we land on ~1.0, adding nothing;
+              //   - if it DIDN'T, v.volume is 1 and our gain does the whole
+              //     correction, turning loud songs down and quiet ones up.
+              // Either way the song ends up at the same target level, with
+              // no risk of attenuating twice.
+              //
+              // This only works because the 500ms tick below no longer
+              // forces v.volume back to 1 — that line destroyed YouTube's
+              // per-song leveling on every track and was the single biggest
+              // cause of songs not matching in volume.
+              function computeGain(vol) {
+                if (loudnessDb === null || !isFinite(loudnessDb)) return 1.0;
+                var ytVol = (vol > 0 && vol <= 1) ? vol : 1;
+                var songFactor = Math.pow(10, loudnessDb / 20);
+                var g = Math.pow(10, TARGET_OFFSET_DB / 20) / (songFactor * ytVol);
+                return Math.min(MAX_GAIN, Math.max(MIN_GAIN, g));
+              }
+
+              // YouTube may not have applied its own attenuation yet at the
+              // moment this graph is built, so recompute if v.volume later
+              // changes. Driven from the existing 500ms tick, and only on
+              // an actual change — v.volume doesn't move during a song, so
+              // this settles within a tick or two and then never fires
+              // again. No mid-song drift.
+              v.__vspoRetune = function() {
+                var g = computeGain(v.volume);
+                if (Math.abs(g - gainNode.gain.value) < 0.001) return;
+                gainNode.gain.value = g;
+                log('gain retuned to ' + g.toFixed(3) +
+                    ' (ytVolume=' + v.volume.toFixed(3) + ')');
+              };
+              v.__vspoLastVol = v.volume;
+              gainNode.gain.value = computeGain(v.volume);
+              log('gain=' + gainNode.gain.value.toFixed(3) +
+                  ' (loudnessDb=' + loudnessDb +
+                  ', ytVolume=' + v.volume.toFixed(3) + ')');
+
               log('audio graph attached to this video element');
             } catch (e) {
               log('audio graph setup FAILED: ' + e);
@@ -353,12 +361,24 @@ class OverlayService : Service() {
             }
 
             if (v) {
+              // Unmute only. We deliberately do NOT force v.volume back to
+              // 1 any more: that is how YouTube applies its own per-song
+              // loudness normalization, so overwriting it threw that away
+              // on every track (twice a second) and left every song at its
+              // raw uploaded level. Muting is different — YouTube autoplays
+              // muted for browser autoplay compliance, and since this
+              // overlay is untouchable there's no way to tap "unmute", so
+              // this part stays.
               var wasMuted = v.muted;
-              var wasQuiet = v.volume < 0.99;
               v.muted = false;
-              v.volume = 1;
-              if (wasMuted || wasQuiet) {
-                log('re-forced unmute (was muted=' + wasMuted + ', volume=' + v.volume + ')');
+              if (wasMuted) {
+                log('re-forced unmute (volume left at ' + v.volume.toFixed(3) + ')');
+              }
+              // Pick up YouTube's normalization if it lands after our audio
+              // graph was built. Only fires on an actual change.
+              if (v.__vspoRetune && v.volume !== v.__vspoLastVol) {
+                v.__vspoLastVol = v.volume;
+                v.__vspoRetune();
               }
               if (!window.__vspoUserPaused && v.paused) {
                 log('video unexpectedly paused, calling play()');
@@ -390,9 +410,9 @@ class OverlayService : Service() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showOverlay(videoId: String) {
+    private fun showOverlay(videoId: String, loudnessDb: Double?) {
         if (webView != null) {
-            loadVideo(videoId)
+            loadVideo(videoId, loudnessDb)
             return
         }
 
@@ -478,10 +498,14 @@ class OverlayService : Service() {
         params.y = 0
 
         windowManager?.addView(newWebView, params)
-        loadVideo(videoId)
+        loadVideo(videoId, loudnessDb)
     }
 
-    private fun loadVideo(videoId: String) {
+    private fun loadVideo(videoId: String, loudnessDb: Double?) {
+        // Set BEFORE navigating, so every injection triggered by this page
+        // load (onPageStarted, onPageFinished, and the delayed re-pokes
+        // below) carries this song's value rather than the previous song's.
+        currentLoudnessDb = loudnessDb
         webView?.loadUrl("https://www.youtube.com/watch?v=$videoId&autoplay=1")
 
         // Safety net on top of onPageStarted/onPageFinished: schedule a

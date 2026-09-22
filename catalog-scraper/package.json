@@ -5,7 +5,8 @@
   "type": "module",
   "description": "One-time/occasional scraper that reads vspodex.app's /music page and writes catalog.json for the VSpo Music app.",
   "scripts": {
-    "scrape": "node scrape.js"
+    "scrape": "node scrape.js",
+    "test": "node loudness.test.js"
   },
   "dependencies": {
     "playwright": "^1.47.0"
