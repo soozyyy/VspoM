@@ -48,7 +48,7 @@
 
 import { chromium } from 'playwright';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { fetchLoudnessDb } from './loudness.js';
+import { fetchLoudnessDb, readPlayerSource, playerConstants } from './loudness.js';
 
 const MUSIC_URL = 'https://www.vspodex.app/zh-Hant/music';
 const EXPECTED_TOTAL = 343; // shown on the page as "343 首" at time of writing; just a hint, not enforced
@@ -241,6 +241,56 @@ async function fillLoudness(tracks) {
   );
 }
 
+// Reports how the freshly-scraped catalog lines up against the player's
+// normalization target, so a problem shows up in the nightly run rather than
+// months later on someone's phone.
+//
+// Two things are worth knowing about a new song:
+//   - it's quieter than target, so it plays through the Web Audio boost path
+//     (which is the path that can stutter);
+//   - it's SO quiet it exceeds the boost cap, so it can't reach target at all
+//     and will play noticeably quiet.
+// Advisory only — never fails the run, since a quiet song is still a song.
+function reportLoudnessCoverage(tracks) {
+  let consts, path;
+  try {
+    const player = readPlayerSource();
+    path = player.path;
+    consts = playerConstants(player.src);
+  } catch (e) {
+    console.log(`\nSkipping loudness coverage check: ${e.message}`);
+    return;
+  }
+
+  const maxBoostDb = 20 * Math.log10(consts.MAX_GAIN);
+  const boosted = [];
+  const clamped = [];
+  for (const t of tracks.values()) {
+    if (typeof t.loudnessDb !== 'number') continue;
+    const boostDb = consts.TARGET_OFFSET_DB - t.loudnessDb;
+    if (boostDb <= 0) continue; // at or above target: plain video.volume
+    boosted.push(t);
+    if (boostDb > maxBoostDb) clamped.push({ t, boostDb });
+  }
+
+  console.log(`\nLoudness coverage (target ${consts.TARGET_OFFSET_DB} dB, from ${path}):`);
+  console.log(
+    `  ${boosted.length} of ${tracks.size} tracks are below target and use the Web Audio boost path.`,
+  );
+  if (clamped.length === 0) {
+    console.log(`  No track exceeds the +${maxBoostDb.toFixed(1)} dB boost cap.`);
+    return;
+  }
+  for (const { t, boostDb } of clamped) {
+    console.log(
+      `  WARNING: "${t.title}" needs +${boostDb.toFixed(1)} dB but the cap is ` +
+        `+${maxBoostDb.toFixed(1)} dB — it will play about ` +
+        `${(boostDb - maxBoostDb).toFixed(1)} dB quieter than everything else.`,
+    );
+  }
+  console.log('  Lower TARGET_OFFSET_DB in OverlayService.kt if this starts to bother you.');
+}
+
 async function main() {
   const tracks = new Map(); // videoId -> track
   let previousCount = 0;
@@ -281,6 +331,7 @@ async function main() {
     console.log('\nSKIP_LOUDNESS=1 set — skipping the per-song loudness pass.');
   } else {
     await fillLoudness(tracks);
+    reportLoudnessCoverage(tracks);
   }
 
   const result = Array.from(tracks.values()).sort((a, b) => {

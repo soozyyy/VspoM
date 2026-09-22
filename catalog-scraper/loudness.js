@@ -8,6 +8,50 @@
 //
 // Kept in its own module, separate from scrape.js, so loudness.test.js can
 // check the real implementation without dragging in Playwright.
+//
+// Also holds the readers for the player's own loudness constants, so the
+// scraper's sanity check and the test both work from the values that actually
+// ship in OverlayService.kt rather than from copies that can drift.
+
+import { readFileSync, existsSync } from 'node:fs';
+
+// Relative to catalog-scraper/, which is where both scrape.js and the test
+// run. The nested path is where these files belong once they're moved back
+// into their real package directory (see claude/next-features-plan.md).
+const PLAYER_PATHS = [
+  '../app/android/app/src/main/kotlin/OverlayService.kt',
+  '../app/android/app/src/main/kotlin/com/soozyyy/vspomusic/vspo_music/OverlayService.kt',
+];
+
+/** Locates and reads the shipping player source. Throws if it has moved. */
+export function readPlayerSource() {
+  const path = PLAYER_PATHS.find((p) => existsSync(p));
+  if (!path) {
+    throw new Error(
+      `OverlayService.kt not found. Looked in:\n  ${PLAYER_PATHS.join('\n  ')}\n` +
+        'If the file moved, add its path to PLAYER_PATHS in loudness.js.',
+    );
+  }
+  return { path, src: readFileSync(path, 'utf-8') };
+}
+
+/**
+ * Pulls the loudness constants out of the injected script. One source of
+ * truth: change TARGET_OFFSET_DB in the Kotlin file and both the scraper's
+ * warnings and the test follow automatically.
+ */
+export function playerConstants(src) {
+  const num = (name) => {
+    const m = src.match(new RegExp(`var ${name} = (-?[\\d.]+);`));
+    if (!m) throw new Error(`could not find "var ${name} = ...;" in the player source`);
+    return Number(m[1]);
+  };
+  return {
+    TARGET_OFFSET_DB: num('TARGET_OFFSET_DB'),
+    MIN_GAIN: num('MIN_GAIN'),
+    MAX_GAIN: num('MAX_GAIN'),
+  };
+}
 
 /**
  * Pulls loudnessDb out of watch-page HTML. Returns null if the field isn't

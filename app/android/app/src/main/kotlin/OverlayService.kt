@@ -94,9 +94,35 @@ class OverlayService : Service() {
     // navigates, so it's always in sync with whatever page is loading.
     private var currentLoudnessDb: Double? = null
 
+    /**
+     * Diagnostic only. Logs real screen on/off under the same tag as the
+     * injected script, so a STUTTER line can be tied to the exact transition
+     * that triggered it.
+     *
+     * This exists because the page-side `visibilitychange` event does NOT
+     * report the screen: for a WebView in an overlay window it only fires on
+     * navigation (the document goes hidden during unload). A capture was
+     * misread that way once already. ACTION_SCREEN_ON/OFF are system
+     * broadcasts and are authoritative.
+     */
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            Log.d("VspoOverlayJS", "[vspo] SCREEN ${if (intent?.action == Intent.ACTION_SCREEN_ON) "ON" else "OFF"}")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // These two can only be received at runtime — they are not deliverable
+        // to a manifest-declared receiver, which is why this is registered here.
+        registerReceiver(
+            screenReceiver,
+            android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            }
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -195,13 +221,35 @@ class OverlayService : Service() {
           // reference. Baked in from Kotlin per page load; null when the
           // catalog has no value for this song yet.
           var loudnessDb = $loudnessLiteral;
-          // Calibration knob: shifts the whole app's output level without
-          // touching any of the logic below. 0 = match YouTube's reference.
-          // Raise it if everything feels too quiet on your phone.
-          var TARGET_OFFSET_DB = 0;
-          // Bounds on what we'll do to any one song. Real catalog values land
-          // around 0.37x (loudest) to 2.0x (quietest), so these only catch
-          // garbage data.
+          // Calibration knob: the level every song is normalized to, in dB
+          // relative to YouTube's -14 LUFS reference. 0 would mean "match
+          // YouTube"; raise it toward 0 if the app feels too quiet, lower it
+          // if you want fewer songs on the boost path.
+          //
+          // -6 is chosen, not arbitrary. A song only needs the Web Audio
+          // boost path when it is QUIETER than this target, and Web Audio is
+          // what causes the stutter — so a lower target means fewer songs can
+          // ever hit it. Measured on the real 344-song catalog:
+          //
+          //     offset    app level   songs needing Web Audio   leveling
+          //        0      -14 LUFS         24  (7.0%)           1.89 dB
+          //       -6      -20 LUFS          2  (0.6%)           perfect
+          //
+          // It also buys headroom against FUTURE songs. Boost is capped at
+          // MAX_GAIN (+12 dB), so a song more than 12 dB below target can't
+          // reach it and plays slightly quiet. At offset 0 that bites at
+          // -26 LUFS and one song in the catalog already does; at -6 it
+          // bites at -32 LUFS, which nothing comes close to.
+          //
+          // Deliberately NOT set to the current quietest song (-13.93): that
+          // would zero out the boost path today and silently resurrect it the
+          // first time a quieter song is added, while costing 14 dB of
+          // loudness for a guarantee it can't keep.
+          var TARGET_OFFSET_DB = -6;
+          // Bounds on what we'll do to any one song — these only catch
+          // garbage data. MAX_GAIN of 4.0 is +12 dB; see the headroom note
+          // above, and the catalog invariant in loudness.test.js that fails
+          // if any real song ever exceeds it.
           var MIN_GAIN = 0.25;
           var MAX_GAIN = 4.0;
 
@@ -210,27 +258,195 @@ class OverlayService : Service() {
           function log(msg) { console.log('[vspo] ' + msg); }
           log('page loaded: ' + location.href);
 
-          function setupAudioGraph(v) {
-            // Belt-and-suspenders guard directly on the element itself, on
-            // top of the window.__vspoHookedVideo check at the call site —
+          // ---- stutter detector (diagnostic only, no behaviour change) ----
+          // The audible glitch is a split-second dropout, far too short to see
+          // in the 4-second status line. This compares the media clock against
+          // the wall clock on every 500ms tick and logs ONLY when they
+          // disagree, so it stays silent unless something actually goes wrong.
+          //
+          // The fields it records are chosen to separate the three candidate
+          // causes, which need completely different fixes:
+          //   readyState < 4 or buffered≈0 -> the pipeline ran dry (network or
+          //     decode). Web Audio is innocent.
+          //   readyState 4 with seconds buffered, yet playback stalled -> the
+          //     data was ready and the SINK stalled. That's the audio output
+          //     path, i.e. Web Audio / AudioTrack.
+          //   dropped frames spiking at the same moment -> video decode is
+          //     struggling and dragging the clock with it.
+          function bufferedAhead(v) {
+            try {
+              for (var i = 0; i < v.buffered.length; i++) {
+                if (v.buffered.start(i) <= v.currentTime && v.currentTime <= v.buffered.end(i)) {
+                  return v.buffered.end(i) - v.currentTime;
+                }
+              }
+            } catch (e) {}
+            return -1;
+          }
+
+          function droppedFrames(v) {
+            try {
+              return v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().droppedVideoFrames : -1;
+            } catch (e) { return -1; }
+          }
+
+          // Watches TWO clocks against the wall clock, because they fail
+          // independently and that difference is the whole diagnosis:
+          //
+          //   video.currentTime   - the media clock. Stalls on buffering,
+          //                         decode trouble, or CPU starvation.
+          //   ctx.currentTime     - the audio clock, advanced by rendered
+          //                         samples. Stalls when the Web Audio render
+          //                         thread misses its deadline.
+          //
+          // A previous capture showed the media clock keeping PERFECT time
+          // across 76 seconds during which the glitch was audible throughout.
+          // That rules out buffering/decode/CPU and points below the media
+          // clock, at the audio output path — which is exactly what
+          // createMediaElementSource put in there. If AUDIO drift appears
+          // while VIDEO drift stays at zero, that's confirmed, and the fix is
+          // to stop routing audio through Web Audio for the ~93% of songs
+          // that only need turning down (video.volume does that natively).
+          function checkStutter(v) {
+            if (!v || v.paused || v.ended) { window.__vspoClock = null; return; }
+            // readyState < 3 (HAVE_FUTURE_DATA) means the element hasn't got
+            // going yet — that's song startup, not a stutter. Without this,
+            // every page load produced a burst of false positives at t=0.00
+            // that buried the real events.
+            if (v.readyState < 3) { window.__vspoClock = null; return; }
+            var ctx = window.__vspoAudioCtx;
+            var now = Date.now();
+            var prev = window.__vspoClock;
+            window.__vspoClock = {
+              wall: now,
+              play: v.currentTime,
+              audio: ctx ? ctx.currentTime : -1,
+              dropped: droppedFrames(v)
+            };
+            if (!prev) return;
+            var wallMs = now - prev.wall;
+            var playMs = (v.currentTime - prev.play) * 1000;
+            // currentTime going backwards is a seek or a loop, never a
+            // stutter — and without this guard a seek backwards looks like a
+            // huge one. A seek FORWARD needs no guard: it makes playMs large,
+            // so lostMs goes negative and nothing fires.
+            if (playMs < 0) return;
+            // No upper bound on purpose: if the tick itself gets delayed AND
+            // playback stalls with it, that's exactly what we want to see.
+            var videoLost = wallMs - playMs;
+            // The audio clock never rewinds, so it needs no seek guard.
+            var audioLost = (prev.audio < 0 || !ctx)
+              ? 0
+              : wallMs - (ctx.currentTime - prev.audio) * 1000;
+            // Observed noise floor on the media clock is ~20ms; 80 clears it.
+            if (videoLost < 80 && audioLost < 80) return;
+            log('STUTTER videoLost=' + videoLost.toFixed(0) + 'ms' +
+                ' audioLost=' + audioLost.toFixed(0) + 'ms' +
+                ' wall=' + wallMs + 'ms' +
+                ' readyState=' + v.readyState +
+                ' bufferedAhead=' + bufferedAhead(v).toFixed(1) + 's' +
+                ' droppedFrames=+' + (window.__vspoClock.dropped - prev.dropped) +
+                ' audioCtx=' + (ctx ? ctx.state : 'none') +
+                ' t=' + v.currentTime.toFixed(2));
+          }
+
+          // NOTE: this fires on navigation (the document goes hidden during
+          // unload), NOT on the screen turning off — an earlier capture was
+          // misread because of that. Real screen state is logged from Kotlin
+          // instead, as SCREEN ON / SCREEN OFF under the same tag. Kept only
+          // because it marks page teardown, which is genuinely useful.
+          document.addEventListener('visibilitychange', function() {
+            var v = document.querySelector('video');
+            log('document ' + document.visibilityState + ' (navigation, not screen)' +
+                ' at t=' + (v ? v.currentTime.toFixed(2) : 'n/a'));
+          });
+
+          // What to do with this song, decided purely from its loudness.
+          // Pure function, no DOM — loudness.test.js lifts it from this file
+          // and checks the routing, so it can't drift from what ships.
+          //
+          //   'leave'  - no catalog value. Touch NOTHING: YouTube's own
+          //              normalization is already on the element and stomping
+          //              it is what caused the original volume problem.
+          //   'volume' - song needs turning DOWN. video.volume does that
+          //              natively, so NO Web Audio at all.
+          //   'boost'  - song needs turning UP. video.volume caps at 1, so
+          //              this is the only case that needs a gain node.
+          //
+          // On the real 344-song catalog that's 320 'volume', 24 'boost' —
+          // i.e. 93% of playback never enters the Web Audio graph.
+          function plan(db) {
+            if (db === null || !isFinite(db)) return { mode: 'leave', target: 1 };
+            var target = Math.pow(10, (TARGET_OFFSET_DB - db) / 20);
+            return { mode: target <= 1 ? 'volume' : 'boost', target: target };
+          }
+
+          // Gain for the boost path only. ytVol is whatever YouTube left on
+          // the element (1.0 for anything it declined to lift), so dividing
+          // by it means we can never stack our boost on top of an attenuation
+          // YouTube already applied. Also lifted by the test.
+          function boostGain(target, ytVol) {
+            var v0 = (ytVol > 0 && ytVol <= 1) ? ytVol : 1;
+            return Math.min(MAX_GAIN, Math.max(MIN_GAIN, target / v0));
+          }
+
+          // Keeps an element at its target volume. Cheap enough to call every
+          // tick: setting .volume to the value it already holds is a no-op in
+          // the media element, and this self-heals if YouTube (or anything
+          // else) moves it afterwards.
+          function enforceVolume(v) {
+            if (!v || v.__vspoTargetVol === undefined) return;
+            if (Math.abs(v.volume - v.__vspoTargetVol) <= 0.005) return;
+            var before = v.volume;
+            v.volume = v.__vspoTargetVol;
+            log('volume -> ' + v.__vspoTargetVol.toFixed(3) +
+                ' (was ' + before.toFixed(3) + ')');
+          }
+
+          function applyLoudness(v) {
+            if (v.__vspoTuned) { return; }
+            v.__vspoTuned = true;
+            var p = plan(loudnessDb);
+            if (p.mode === 'leave') {
+              log('no loudness for this song - leaving YouTube\'s own level alone');
+              return;
+            }
+            if (p.mode === 'volume') {
+              // The whole normalization for this song, with no AudioContext,
+              // no source node and no limiter. YouTube has usually already
+              // set exactly this value; enforceVolume only acts if it hasn't.
+              v.__vspoTargetVol = p.target;
+              log('volume path: target=' + p.target.toFixed(3) +
+                  ' (loudnessDb=' + loudnessDb +
+                  ', ytVolume=' + v.volume.toFixed(3) + ') - no Web Audio');
+              enforceVolume(v);
+              return;
+            }
+            buildBoostGraph(v, p.target);
+          }
+
+          function buildBoostGraph(v, target) {
+            // Belt-and-suspenders guard directly on the element itself —
             // createMediaElementSource() can only ever be called ONCE for
             // a given underlying media element/resource; calling it twice
             // throws InvalidStateError and leaves that video's audio graph
-            // broken for the rest of the song. This was actually observed
-            // happening (twice in a row) in a captured log, almost
-            // certainly caused by the old single-shot injection running
-            // again and resetting window.__vspoHookedVideo to null while
-            // the previous run's interval was still alive and already
-            // hooked to the same element.
+            // broken for the rest of the song.
             if (v.__vspoAudioSetup) {
-              log('setupAudioGraph skipped, element already set up');
+              log('boost graph skipped, element already set up');
               return;
             }
             v.__vspoAudioSetup = true;
             try {
               if (!window.__vspoAudioCtx) {
-                window.__vspoAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                log('created AudioContext, initial state=' + window.__vspoAudioCtx.state);
+                // 'playback' asks for the LARGEST output buffer rather than
+                // the default 'interactive' (smallest). Routing audio through
+                // Web Audio means every load spike has to be absorbed by that
+                // buffer; if it isn't, the render thread fills the gap with
+                // silence and you hear a click. Latency is irrelevant for
+                // music, so trade it for headroom. Only reached on the ~7% of
+                // songs that need a boost at all.
+                window.__vspoAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+                log('created AudioContext (latencyHint=playback), initial state=' + window.__vspoAudioCtx.state);
               }
               var ctx = window.__vspoAudioCtx;
               if (ctx.state === 'suspended') {
@@ -272,65 +488,42 @@ class OverlayService : Service() {
               gainNode.connect(limiter);
               limiter.connect(ctx.destination);
 
-              // ---- loudness normalization -------------------------------
-              // One gain, decided once, held for the whole song. No
-              // measuring, no sampling window, no mid-song adjustment —
-              // the number comes from YouTube's own analysis of the entire
-              // track, which is strictly better than anything we could
-              // estimate from the first second and a half of audio.
+              // One gain, decided once, held for the whole song. The number
+              // comes from YouTube's analysis of the entire track, which is
+              // strictly better than anything we could estimate from the
+              // first second and a half of audio.
               //
-              // The v.volume term is what makes this correct without us
-              // having to know whether YouTube already normalized this
-              // page. YouTube levels loud uploads down by setting
-              // video.volume to 10^(-loudnessDb/20), and never boosts quiet
-              // ones. So:
-              //   - if it DID normalize, v.volume cancels the loudness term
-              //     out and we land on ~1.0, adding nothing;
-              //   - if it DIDN'T, v.volume is 1 and our gain does the whole
-              //     correction, turning loud songs down and quiet ones up.
-              // Either way the song ends up at the same target level, with
-              // no risk of attenuating twice.
-              //
-              // This only works because the 500ms tick below no longer
-              // forces v.volume back to 1 — that line destroyed YouTube's
-              // per-song leveling on every track and was the single biggest
-              // cause of songs not matching in volume.
-              function computeGain(vol) {
-                if (loudnessDb === null || !isFinite(loudnessDb)) return 1.0;
-                var ytVol = (vol > 0 && vol <= 1) ? vol : 1;
-                var songFactor = Math.pow(10, loudnessDb / 20);
-                var g = Math.pow(10, TARGET_OFFSET_DB / 20) / (songFactor * ytVol);
-                return Math.min(MAX_GAIN, Math.max(MIN_GAIN, g));
-              }
-
-              // YouTube may not have applied its own attenuation yet at the
-              // moment this graph is built, so recompute if v.volume later
-              // changes. Driven from the existing 500ms tick, and only on
-              // an actual change — v.volume doesn't move during a song, so
-              // this settles within a tick or two and then never fires
-              // again. No mid-song drift.
+              // YouTube never boosts, so on this path v.volume is normally 1
+              // and the gain is the whole correction. Dividing by v.volume
+              // anyway means that if YouTube ever DID attenuate this element,
+              // we can't stack a boost on top of it.
               v.__vspoRetune = function() {
-                var g = computeGain(v.volume);
+                var g = boostGain(target, v.volume);
                 if (Math.abs(g - gainNode.gain.value) < 0.001) return;
                 gainNode.gain.value = g;
                 log('gain retuned to ' + g.toFixed(3) +
                     ' (ytVolume=' + v.volume.toFixed(3) + ')');
               };
               v.__vspoLastVol = v.volume;
-              gainNode.gain.value = computeGain(v.volume);
-              log('gain=' + gainNode.gain.value.toFixed(3) +
+              gainNode.gain.value = boostGain(target, v.volume);
+              log('boost path: gain=' + gainNode.gain.value.toFixed(3) +
                   ' (loudnessDb=' + loudnessDb +
+                  ', target=' + target.toFixed(3) +
                   ', ytVolume=' + v.volume.toFixed(3) + ')');
 
-              log('audio graph attached to this video element');
+              log('boost graph attached to this video element');
             } catch (e) {
-              log('audio graph setup FAILED: ' + e);
+              log('boost graph setup FAILED: ' + e);
             }
           }
 
           setInterval(function() {
             tickCount++;
             var v = document.querySelector('video');
+
+            // First thing in the tick, so its wall-clock reading is as close
+            // as possible to a fixed 500ms cadence.
+            checkStutter(v);
 
             // Diagnostic-only signal, not used to gate any actual logic.
             // The previous selector (.ad-showing / .ytp-ad-player-overlay)
@@ -350,7 +543,7 @@ class OverlayService : Service() {
             if (v && v !== window.__vspoHookedVideo) {
               log('NEW video element (first load or swap), src=' + (v.currentSrc || v.src || '?'));
               window.__vspoHookedVideo = v;
-              setupAudioGraph(v);
+              applyLoudness(v);
             } else if (window.__vspoAudioCtx && window.__vspoAudioCtx.state === 'suspended') {
               // Retry every tick, not just once at setup — if this ever
               // gets stuck suspended, that alone would cause total silence
@@ -374,8 +567,11 @@ class OverlayService : Service() {
               if (wasMuted) {
                 log('re-forced unmute (volume left at ' + v.volume.toFixed(3) + ')');
               }
-              // Pick up YouTube's normalization if it lands after our audio
-              // graph was built. Only fires on an actual change.
+              // Volume path: hold the element at its target. Self-healing if
+              // YouTube moves it after we set it, and a no-op otherwise.
+              enforceVolume(v);
+              // Boost path: pick up YouTube's attenuation if it lands after
+              // the graph was built. Only fires on an actual change.
               if (v.__vspoRetune && v.volume !== v.__vspoLastVol) {
                 v.__vspoLastVol = v.volume;
                 v.__vspoRetune();
@@ -615,6 +811,13 @@ class OverlayService : Service() {
     override fun onDestroy() {
         instance = null
         mainHandler.removeCallbacksAndMessages(null)
+        // Leaking a registered receiver past the service's life logs a loud
+        // framework warning and holds a reference to this service.
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Never registered (or already unregistered) — safe to ignore.
+        }
         removeOverlay()
         super.onDestroy()
     }
