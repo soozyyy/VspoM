@@ -74,6 +74,13 @@ android {
     }
 }
 
+dependencies {
+    // MediaSessionCompat + MediaStyle notifications, for lock-screen and
+    // hardware media-button controls. Nothing else here pulls this in
+    // transitively — this is the module's first and only direct dependency.
+    implementation("androidx.media:media:1.7.0")
+}
+
 flutter {
     source = "../.."
 }

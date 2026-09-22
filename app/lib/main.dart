@@ -303,6 +303,14 @@ class PlaylistScreen extends StatefulWidget {
 class _PlaylistScreenState extends State<PlaylistScreen>
     with WidgetsBindingObserver {
   static const _overlayChannel = MethodChannel('vspo_music/overlay');
+  // Native -> here. Carries skip requests from the lock screen, the
+  // notification's Previous/Next buttons, and hardware media buttons
+  // (Bluetooth, wired remote, car head unit). They have to come up to Dart
+  // because the shuffle order (_playOrder / _playOrderIndex below) only
+  // exists here — native can play a video ID but has no idea which one is
+  // next. See OverlayService.askDartFor().
+  static const _overlayEvents = EventChannel('vspo_music/overlay_events');
+  StreamSubscription<dynamic>? _eventsSub;
 
   List<Song> _catalog = [];
   bool _loadingCatalog = true;
@@ -339,6 +347,17 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         _loadingCatalog = false;
       });
     });
+    // Routed straight into the same _next()/_previous() the mini-player
+    // buttons use — no separate sequencing logic, so a lock-screen skip and
+    // an in-app skip are literally the same code path. The mini-player and
+    // highlighted row then catch up on the next _pollPosition() tick.
+    _eventsSub = _overlayEvents.receiveBroadcastStream().listen((event) {
+      if (event == 'skipNext') {
+        _next();
+      } else if (event == 'skipPrevious') {
+        _previous();
+      }
+    });
     _progressTimer = Timer.periodic(
       const Duration(milliseconds: 500),
       (_) => _pollPosition(),
@@ -347,6 +366,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
   @override
   void dispose() {
+    _eventsSub?.cancel();
     _progressTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();

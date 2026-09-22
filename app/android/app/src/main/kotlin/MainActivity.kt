@@ -10,14 +10,52 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "vspo_music/overlay"
+    // Native -> Dart, the opposite direction to CHANNEL above. Needed because
+    // Skip/Previous can't be answered natively: OverlayService only knows how
+    // to play a given video ID, while the shuffle order and current position
+    // within it live entirely in Dart (_playOrder / _playOrderIndex in
+    // main.dart). So a hardware or lock-screen skip is a round trip —
+    // session callback -> here -> Dart's _next()/_previous() -> playVideo.
+    private val EVENTS_CHANNEL = "vspo_music/overlay_events"
     private val NOTIFICATION_PERMISSION_REQUEST_CODE = 4201
+
+    companion object {
+        /**
+         * Where OverlayService posts skip events. Set while Dart is listening,
+         * null otherwise.
+         *
+         * Null is a real, reachable state, not just defensive nulling: this
+         * sink belongs to the FlutterEngine, which FlutterActivity tears down
+         * when the Activity is destroyed — i.e. when the app is swiped out of
+         * recents. Audio keeps playing (the overlay window and the foreground
+         * service are independent of the Activity, which is the whole point of
+         * OverlayService), and play/pause keeps working because it is handled
+         * natively, but skip/previous quietly stop working until the app is
+         * reopened. Fixing that means caching the FlutterEngine so it outlives
+         * the Activity — deliberately not done, see claude/next-features-plan.md.
+         */
+        var events: EventChannel.EventSink? = null
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENTS_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                    events = sink
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    events = null
+                }
+            })
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasOverlayPermission" -> {

@@ -12,6 +12,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -20,6 +23,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 
 /**
  * Hosts a YouTube WebView inside an invisible (1x1) system overlay window,
@@ -51,6 +55,17 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_PLAY = "com.soozyyy.vspomusic.vspo_music.action.PLAY"
         const val ACTION_STOP = "com.soozyyy.vspomusic.vspo_music.action.STOP"
+        // Backing actions for the notification's own play/pause button.
+        // Only used on Android 12 and below: from 13 onwards the system
+        // derives a MediaStyle notification's buttons from the session's
+        // PlaybackState actions and ignores addAction() entirely. Handled
+        // here rather than via MediaButtonReceiver so no manifest receiver,
+        // no MEDIA_BUTTON intent-filter and no extra routing are needed —
+        // hardware buttons already reach an active session directly.
+        const val ACTION_PAUSE = "com.soozyyy.vspomusic.vspo_music.action.PAUSE"
+        const val ACTION_RESUME = "com.soozyyy.vspomusic.vspo_music.action.RESUME"
+        const val ACTION_SKIP_NEXT = "com.soozyyy.vspomusic.vspo_music.action.SKIP_NEXT"
+        const val ACTION_SKIP_PREVIOUS = "com.soozyyy.vspomusic.vspo_music.action.SKIP_PREVIOUS"
         const val EXTRA_VIDEO_ID = "videoId"
         const val EXTRA_TITLE = "title"
         const val EXTRA_ARTIST = "artist"
@@ -88,6 +103,20 @@ class OverlayService : Service() {
     private var webView: WebView? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Android's handle on "this app is a media player": what the lock screen,
+    // Bluetooth/wired/car buttons and the system media output switcher all
+    // talk to. Created in onCreate(), released in onDestroy().
+    private var mediaSession: MediaSessionCompat? = null
+
+    // What's playing, kept as fields rather than onStartCommand() locals
+    // because the notification now has to be REBUILT outside ACTION_PLAY —
+    // every pause/resume re-posts it with a flipped play/pause icon and a
+    // flipped ongoing flag. The fallbacks match the old buildNotification()
+    // behaviour for a playVideo call that somehow arrives without them.
+    private var currentTitle = "VSpo Music"
+    private var currentArtist = "Playing in the background"
+    private var isPlaying = false
+
     // Loudness of the song currently being loaded. Read by injectionScript()
     // so every injection for this page (onPageStarted, onPageFinished, and
     // the scheduled re-pokes) carries the same value. Set before loadVideo()
@@ -114,6 +143,23 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        createNotificationChannel()
+        // The callbacks land on the main thread (no handler passed), which is
+        // required: they all end up in evaluateJavascript(), and WebView is
+        // main-thread only.
+        mediaSession = MediaSessionCompat(this, "VspoMusic").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() = resume()
+                override fun onPause() = pause()
+                override fun onStop() = stopEverything()
+                override fun onSeekTo(pos: Long) = seekTo(pos / 1000.0)
+                // Unlike the four above, these cannot be answered here: only
+                // Dart knows the shuffle order. Hand them up and let it call
+                // back down via playVideo.
+                override fun onSkipToNext() = askDartFor("skipNext")
+                override fun onSkipToPrevious() = askDartFor("skipPrevious")
+            })
+        }
         // These two can only be received at runtime — they are not deliverable
         // to a manifest-declared receiver, which is why this is registered here.
         registerReceiver(
@@ -130,11 +176,14 @@ class OverlayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                removeOverlay()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                stopEverything()
                 return START_NOT_STICKY
             }
+
+            ACTION_PAUSE -> pause()
+            ACTION_RESUME -> resume()
+            ACTION_SKIP_NEXT -> askDartFor("skipNext")
+            ACTION_SKIP_PREVIOUS -> askDartFor("skipPrevious")
 
             ACTION_PLAY -> {
                 val videoId = intent.getStringExtra(EXTRA_VIDEO_ID)
@@ -147,7 +196,24 @@ class OverlayService : Service() {
                 val loudnessDb = intent.getDoubleExtra(EXTRA_LOUDNESS_DB, Double.NaN)
                     .takeIf { !it.isNaN() }
                 if (videoId != null) {
-                    startForeground(NOTIFICATION_ID, buildNotification(title, artist))
+                    // Session state first, notification second — buildNotification()
+                    // reads all of these, including the session token.
+                    currentTitle = title
+                    currentArtist = artist
+                    isPlaying = true
+                    mediaSession?.isActive = true
+                    mediaSession?.setMetadata(
+                        MediaMetadataCompat.Builder()
+                            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                            // Deliberately no METADATA_KEY_DURATION: without a
+                            // duration the lock screen shows no scrubber, so
+                            // there's no position to keep in sync with the
+                            // <video> element. Artwork is a later phase.
+                            .build()
+                    )
+                    publishState()
+                    startForeground(NOTIFICATION_ID, buildNotification())
                     showOverlay(videoId, loudnessDb)
                 }
             }
@@ -155,43 +221,154 @@ class OverlayService : Service() {
         return START_STICKY
     }
 
-    private fun buildNotification(title: String, artist: String): Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 "VSpo Music playback",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-        // The mini-player's own UI intentionally has no full-stop button
-        // (pause/resume covers that use case), but there still needs to be
-        // some hard way to kill the overlay + foreground service entirely
-        // (e.g. before uninstalling, or if something gets stuck) without
-        // force-closing the app. A Stop action on the persistent notification
-        // — the same pattern real media-player notifications use — covers
-        // that without adding anything to the in-app mini-player.
-        val stopIntent = Intent(this, OverlayService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
+        )
+    }
+
+    private fun servicePendingIntent(action: String, requestCode: Int): PendingIntent =
+        PendingIntent.getService(
             this,
-            0,
-            stopIntent,
+            requestCode,
+            Intent(this, OverlayService::class.java).setAction(action),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+    /**
+     * The one place the notification is assembled, from the fields above.
+     * Re-called on every pause/resume, not just on a new song.
+     *
+     * There is deliberately no Stop button. Instead this follows the
+     * Spotify/YT Music convention: ongoing (unswipeable) while playing,
+     * dismissible once paused, and dismissing it runs the exact same
+     * teardown the old Stop button did, via setDeleteIntent(). That keeps
+     * the button row at three (Previous, Play/Pause, Next) once the skip
+     * actions land, which is as many as the collapsed row fits comfortably.
+     */
+    private fun buildNotification(): Notification {
+        val playPause = if (isPlaying) {
+            NotificationCompat.Action(
+                android.R.drawable.ic_media_pause,
+                "Pause",
+                servicePendingIntent(ACTION_PAUSE, 1)
+            )
+        } else {
+            NotificationCompat.Action(
+                android.R.drawable.ic_media_play,
+                "Play",
+                servicePendingIntent(ACTION_RESUME, 2)
+            )
+        }
 
         // Reusing ic_bg_service_small — already confirmed to be a valid,
         // non-adaptive notification icon (this is what fixed the earlier
         // CannotPostForegroundServiceNotificationException crash).
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(artist)
+            .setContentTitle(currentTitle)
+            .setContentText(currentArtist)
             .setSmallIcon(R.drawable.ic_bg_service_small)
-            .setOngoing(true)
-            .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
+            .setStyle(
+                MediaStyle()
+                    .setMediaSession(mediaSession?.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            // Order matters — these indices are what setShowActionsInCompactView
+            // refers to. Three is about as many as the collapsed row fits.
+            .addAction(
+                android.R.drawable.ic_media_previous,
+                "Previous",
+                servicePendingIntent(ACTION_SKIP_PREVIOUS, 3)
+            )
+            .addAction(playPause)
+            .addAction(
+                android.R.drawable.ic_media_next,
+                "Next",
+                servicePendingIntent(ACTION_SKIP_NEXT, 4)
+            )
+            .setOngoing(isPlaying)
+            .setDeleteIntent(servicePendingIntent(ACTION_STOP, 0))
             .build()
+    }
+
+    /** Re-posts the notification in place after a state change. */
+    private fun refreshNotification() {
+        // Plain NotificationManager rather than NotificationManagerCompat:
+        // the latter's notify() carries a @RequiresPermission that lint flags
+        // here, and this only ever updates a notification the service already
+        // posted via startForeground().
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    /**
+     * Publishes [isPlaying] to the MediaSession. Called from pause()/resume()
+     * themselves rather than from their call sites, because there are now two
+     * of those (Dart's MethodChannel, and the MediaSession callback driven by
+     * the lock screen and hardware buttons) and publishing at each site
+     * separately is how the lock screen and the in-app mini-player drift apart.
+     *
+     * From Android 13 on, the actions declared here are also what the system
+     * renders as the notification's buttons.
+     */
+    private fun publishState() {
+        mediaSession?.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_SEEK_TO or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                )
+                .setState(
+                    if (isPlaying) PlaybackStateCompat.STATE_PLAYING
+                    else PlaybackStateCompat.STATE_PAUSED,
+                    // The real position lives in the <video> element and is
+                    // only readable asynchronously (getPosition). Since no
+                    // duration is published either, nothing displays it —
+                    // reporting UNKNOWN is honest and costs nothing.
+                    PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                    1f
+                )
+                .build()
+        )
+    }
+
+    /**
+     * Sends a skip request up to Dart, which owns the shuffle order and
+     * answers by calling playVideo back down. Deliberately fire-and-forget:
+     * if nothing is listening (app swiped out of recents, so the Flutter
+     * engine is gone — see MainActivity.events) the skip is dropped rather
+     * than queued, because by the time Dart came back the request would be
+     * several songs stale.
+     *
+     * Safe to call straight from the MediaSession callback and from
+     * onStartCommand: both run on the main thread, which is also the thread
+     * an EventSink must be touched from.
+     */
+    private fun askDartFor(event: String) {
+        val sink = MainActivity.events
+        if (sink == null) {
+            Log.d("VspoOverlayJS", "[vspo] $event ignored - no Dart listener (app closed?)")
+            return
+        }
+        sink.success(event)
+    }
+
+    /** Full teardown — the old Stop button's behaviour, now also reached by
+     *  swiping the paused notification away and by MediaSession's onStop(). */
+    private fun stopEverything() {
+        removeOverlay()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     /**
@@ -736,6 +913,9 @@ class OverlayService : Service() {
             "(function(){window.__vspoUserPaused = true; var v=document.querySelector('video'); if(v) v.pause();})();",
             null
         )
+        isPlaying = false
+        publishState()
+        refreshNotification()
     }
 
     /** Resumes the underlying <video> element directly (play/pause toggle). */
@@ -744,6 +924,9 @@ class OverlayService : Service() {
             "(function(){window.__vspoUserPaused = false; var v=document.querySelector('video'); if(v) v.play();})();",
             null
         )
+        isPlaying = true
+        publishState()
+        refreshNotification()
     }
 
     /** Seeks the underlying <video> element to the given position, in seconds. */
@@ -811,6 +994,11 @@ class OverlayService : Service() {
     override fun onDestroy() {
         instance = null
         mainHandler.removeCallbacksAndMessages(null)
+        // Leaving an active session behind makes the system keep routing
+        // hardware media buttons at a service that no longer exists.
+        mediaSession?.isActive = false
+        mediaSession?.release()
+        mediaSession = null
         // Leaking a registered receiver past the service's life logs a loud
         // framework warning and holds a reference to this service.
         try {
