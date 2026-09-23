@@ -332,6 +332,18 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   Timer? _progressTimer;
   bool _autoAdvancing = false;
 
+  // Bumped on every setState (see override below). The full-screen Now
+  // Playing page is a pushed route, and a route's builder doesn't re-run
+  // when this State calls setState — so it listens to this instead and
+  // rebuilds off the same fields the mini-player reads.
+  final _changes = ValueNotifier<int>(0);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _changes.value++;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -370,6 +382,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     _progressTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _changes.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -972,7 +985,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     );
   }
 
-  Widget _buildTrackRow(int index) {
+  // onTap defaults to "start a new shuffle from this song" (library list);
+  // the Up Next list passes its own to jump within the current order.
+  Widget _buildTrackRow(int index, {VoidCallback? onTap}) {
     final song = _catalog[index];
     final isCurrent = _currentSongIndex == index;
     return ListTile(
@@ -1010,18 +1025,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
       ),
-      onTap: () => _playSpecificSong(index),
+      onTap: onTap ?? () => _playSpecificSong(index),
     );
   }
 
   Widget _buildMiniPlayer(Song song) {
-    final durationMs = _duration.inMilliseconds;
-    final sliderMax = durationMs > 0 ? durationMs.toDouble() : 1.0;
-    final sliderValue = (_dragValueSeconds != null
-            ? _dragValueSeconds! * 1000
-            : _position.inMilliseconds.toDouble())
-        .clamp(0.0, sliderMax);
-
     return Material(
       color: const Color(0xFF1E1E1E),
       child: SafeArea(
@@ -1031,85 +1039,271 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 2.5,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                  activeTrackColor: Colors.deepPurpleAccent,
-                  inactiveTrackColor: Colors.grey.shade700,
-                  thumbColor: Colors.deepPurpleAccent,
-                ),
-                child: Slider(
-                  min: 0,
-                  max: sliderMax,
-                  value: sliderValue,
-                  onChanged: durationMs > 0
-                      ? (value) => setState(() => _dragValueSeconds = value / 1000)
-                      : null,
-                  onChangeEnd: durationMs > 0
-                      ? (value) => _seekTo(
-                            Duration(milliseconds: value.round()),
-                          )
-                      : null,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Row(
-                  children: [
-                    // 16:9, matching the video thumbnail's real shape —
-                    // see the track-row thumbnail's comment for why.
-                    _ThumbnailImage(
-                      url: song.thumbnailUrl,
-                      width: 78,
-                      height: 44,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            song.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 13.5),
-                          ),
-                          Text(
-                            song.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: Colors.grey.shade400, fontSize: 11.5),
-                          ),
-                        ],
+              _buildSeekBar(),
+              InkWell(
+                onTap: _openNowPlaying,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      // 16:9, matching the video thumbnail's real shape —
+                      // see the track-row thumbnail's comment for why.
+                      _ThumbnailImage(
+                        url: song.thumbnailUrl,
+                        width: 78,
+                        height: 44,
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.skip_previous, color: Colors.white),
-                      onPressed: _previous,
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        _isPaused ? Icons.play_circle_fill : Icons.pause_circle_filled,
-                        color: Colors.white,
-                        size: 32,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              song.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 13.5),
+                            ),
+                            Text(
+                              song.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: Colors.grey.shade400, fontSize: 11.5),
+                            ),
+                          ],
+                        ),
                       ),
-                      onPressed: _togglePlayPause,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.skip_next, color: Colors.white),
-                      onPressed: _next,
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous, color: Colors.white),
+                        onPressed: _previous,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _isPaused ? Icons.play_circle_fill : Icons.pause_circle_filled,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                        onPressed: _togglePlayPause,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next, color: Colors.white),
+                        onPressed: _next,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Shared by the mini-player (thin, no labels) and the Now Playing page
+  // (thicker, with elapsed/total time underneath).
+  Widget _buildSeekBar({bool large = false}) {
+    final durationMs = _duration.inMilliseconds;
+    final sliderMax = durationMs > 0 ? durationMs.toDouble() : 1.0;
+    final sliderValue = (_dragValueSeconds != null
+            ? _dragValueSeconds! * 1000
+            : _position.inMilliseconds.toDouble())
+        .clamp(0.0, sliderMax);
+
+    final slider = SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: large ? 4 : 2.5,
+        thumbShape: RoundSliderThumbShape(enabledThumbRadius: large ? 7 : 5),
+        overlayShape: RoundSliderOverlayShape(overlayRadius: large ? 16 : 12),
+        activeTrackColor: Colors.deepPurpleAccent,
+        inactiveTrackColor: Colors.grey.shade700,
+        thumbColor: Colors.deepPurpleAccent,
+      ),
+      child: Slider(
+        min: 0,
+        max: sliderMax,
+        value: sliderValue,
+        onChanged: durationMs > 0
+            ? (value) => setState(() => _dragValueSeconds = value / 1000)
+            : null,
+        onChangeEnd: durationMs > 0
+            ? (value) => _seekTo(
+                  Duration(milliseconds: value.round()),
+                )
+            : null,
+      ),
+    );
+    if (!large) return slider;
+
+    final labelStyle = TextStyle(color: Colors.grey.shade400, fontSize: 12);
+    return Column(
+      children: [
+        slider,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_fmt(Duration(milliseconds: sliderValue.round())),
+                  style: labelStyle),
+              Text(durationMs > 0 ? _fmt(_duration) : '--:--',
+                  style: labelStyle),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _fmt(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  void _openNowPlaying() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ValueListenableBuilder<int>(
+        valueListenable: _changes,
+        builder: (routeContext, _, __) => _buildNowPlaying(routeContext),
+      ),
+    ));
+  }
+
+  // Full-screen view of the same playback state the mini-player shows, plus
+  // the rest of the current shuffle pass as "Up Next". Nothing new is
+  // stored — the queue is just _playOrder after _playOrderIndex.
+  Widget _buildNowPlaying(BuildContext routeContext) {
+    final song = _catalog[_currentSongIndex!];
+    final upNextStart = _playOrderIndex + 1;
+    final upNext = _playOrder.sublist(upNextStart);
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.keyboard_arrow_down),
+          onPressed: () => Navigator.of(routeContext).pop(),
+        ),
+        title: const Text('Now Playing', style: TextStyle(fontSize: 15)),
+        centerTitle: true,
+      ),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 16:9, the thumbnail's real shape — no crop.
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: CachedNetworkImage(
+                        imageUrl: song.thumbnailUrl,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 1280,
+                        fadeInDuration: const Duration(milliseconds: 120),
+                        placeholder: (_, __) =>
+                            Container(color: Colors.grey.shade800),
+                        errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    song.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    song.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(child: _buildSeekBar(large: true)),
+          SliverToBoxAdapter(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.skip_previous, color: Colors.white),
+                  onPressed: _previous,
+                ),
+                const SizedBox(width: 16),
+                IconButton(
+                  iconSize: 72,
+                  icon: Icon(
+                    _isPaused
+                        ? Icons.play_circle_fill
+                        : Icons.pause_circle_filled,
+                    color: Colors.white,
+                  ),
+                  onPressed: _togglePlayPause,
+                ),
+                const SizedBox(width: 16),
+                IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.skip_next, color: Colors.white),
+                  onPressed: _next,
+                ),
+              ],
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                'Up Next · ${upNext.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          if (upNext.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Text(
+                  'Reshuffles after this song',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                // Jumps straight to that position, YouTube Music style:
+                // songs in between are skipped, so Previous walks back
+                // through them rather than to the song you left.
+                (context, i) => _buildTrackRow(
+                  upNext[i],
+                  onTap: () => _playSongAt(upNextStart + i),
+                ),
+                childCount: upNext.length,
+                addAutomaticKeepAlives: false,
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
       ),
     );
   }
