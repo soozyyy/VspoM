@@ -272,6 +272,38 @@ class _ThumbnailImage extends StatelessWidget {
   }
 }
 
+// Artist slugs (vspodex.app's, same as Song.artistSlug) in debut order,
+// senpai -> kohai: the order of the Artists grid. JP first, then EN.
+// Sources, checked 2026-09-23: vspo-oshikatublog.com/vspo-member-list and
+// nushipedia.com/19224. Lists every member, including ones with no songs in
+// the catalog yet, so they land in the right spot once they get some.
+// A slug missing from both (a new debut) goes after the last listed member
+// of its branch: EN if the artist name contains "VSPO! EN", else JP. To
+// place a new member exactly, append their slug to the right list.
+const _jpDebutOrder = [
+  'vspo-official', // the group's own channel, not a member — kept first
+  'kaga-sumire', 'kaga-nazuna', 'kogara-toto', 'ichinose-uruha',
+  'kurumi-noah', 'tosaki-mimi', 'asumi-sena', 'tachibana-hinano',
+  'hanabusa-lisa', 'kisaragi-ren', 'kaminari-qpi', 'yakumo-beni',
+  'aizawa-ema', 'shinomiya-runa', 'nekota-tsuna', 'shiranami-ramune',
+  'komori-met', 'yumeno-akari', 'yano-kuromu', 'tsumugi-kokage',
+  'sendo-yuuhi', 'choya-hanabi', 'amayui-moka', 'ginjo-saine',
+  'tatsumaki-chise',
+];
+const _enDebutOrder = [
+  'remia-aotsuki', 'arya-kuroha', 'jira-jisaki', 'narin-mikure',
+  'riko-solari', 'eris-suzukami', 'juno-umezono',
+];
+
+int _debutRank(Song song) {
+  final slug = song.artistSlug ?? '';
+  final jp = _jpDebutOrder.indexOf(slug);
+  if (jp >= 0) return jp;
+  final en = _enDebutOrder.indexOf(slug);
+  if (en >= 0) return 1000 + en;
+  return song.artist.contains('VSPO! EN') ? 2000 : 999;
+}
+
 class VspoMusicApp extends StatelessWidget {
   const VspoMusicApp({super.key});
 
@@ -561,15 +593,16 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     );
   }
 
-  Future<void> _shufflePlayAll() async {
+  Future<void> _shufflePlayAll({List<int>? scope}) async {
     if (_hasPermission != true) {
       await _requestPermission();
       return;
     }
     // If a search filter is active, "Shuffle Play All" shuffles just the
     // matching songs (and keeps looping within just them, via _shuffleScope)
-    // instead of the whole catalog.
-    final filtered = _searchQuery.isEmpty ? null : _visibleIndices;
+    // instead of the whole catalog. The artist page passes its own scope.
+    final filtered =
+        scope ?? (_searchQuery.isEmpty ? null : _visibleIndices);
     if (filtered != null && filtered.isEmpty) return;
     _shuffleScope = filtered;
     _newShuffleOrder();
@@ -657,12 +690,14 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     }
   }
 
+  Song? get _currentSong =>
+      (_currentSongIndex != null && _currentSongIndex! < _catalog.length)
+          ? _catalog[_currentSongIndex!]
+          : null;
+
   @override
   Widget build(BuildContext context) {
-    final currentSong =
-        (_currentSongIndex != null && _currentSongIndex! < _catalog.length)
-            ? _catalog[_currentSongIndex!]
-            : null;
+    final currentSong = _currentSong;
 
     final visibleIndices = _visibleIndices;
 
@@ -779,6 +814,18 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _loadingCatalog ? null : _openArtists,
+                icon: const Icon(Icons.people_outline),
+                label: const Text('Artists'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
                   ),
                 ),
               ),
@@ -1161,14 +1208,19 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   static String _fmt(Duration d) =>
       '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
-  void _openNowPlaying() {
+  // Pushes a full-screen page that rebuilds whenever this State does (see
+  // _changes), so it always shows live playback state.
+  void _pushLive(Widget Function(BuildContext routeContext) build) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ValueListenableBuilder<int>(
         valueListenable: _changes,
-        builder: (routeContext, _, __) => _buildNowPlaying(routeContext),
+        builder: (routeContext, _, __) => build(routeContext),
       ),
     ));
   }
+
+  void _openNowPlaying() => _pushLive(_buildNowPlaying);
+  void _openArtists() => _pushLive(_buildArtists);
 
   // Full-screen view of the same playback state the mini-player shows, plus
   // the rest of the current shuffle pass as "Up Next". Nothing new is
@@ -1305,6 +1357,142 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
+    );
+  }
+
+  // Every artist in the catalog with their songs' catalog indices, in debut
+  // order (see _debutRank). Grouped by display name, same as _suggestions.
+  List<MapEntry<String, List<int>>> get _artists {
+    final byArtist = <String, List<int>>{};
+    for (var i = 0; i < _catalog.length; i++) {
+      byArtist.putIfAbsent(_catalog[i].artist, () => []).add(i);
+    }
+    return byArtist.entries.toList()
+      ..sort((a, b) {
+        final byDebut = _debutRank(_catalog[a.value.first])
+            .compareTo(_debutRank(_catalog[b.value.first]));
+        return byDebut != 0 ? byDebut : a.key.compareTo(b.key);
+      });
+  }
+
+  Widget _buildArtists(BuildContext routeContext) {
+    final artists = _artists;
+    final song = _currentSong;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Artists')),
+      body: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisExtent: 168,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: artists.length,
+        itemBuilder: (context, i) {
+          final name = artists[i].key;
+          final indices = artists[i].value;
+          final first = _catalog[indices.first];
+          return InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _pushLive((c) => _buildArtist(c, name)),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                children: [
+                  _ThumbnailImage(
+                    url: first.artistAvatarUrl ?? first.thumbnailUrl,
+                    width: 88,
+                    height: 88,
+                    borderRadius: 44,
+                    errorIcon: Icons.person,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                  ),
+                  Text(
+                    '${indices.length} songs',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: song == null ? null : _buildMiniPlayer(song),
+    );
+  }
+
+  // One artist's songs, matched on the exact artist name (not search, which
+  // would also pull in other artists' songs that mention them in the title).
+  Widget _buildArtist(BuildContext routeContext, String name) {
+    final indices = [
+      for (var i = 0; i < _catalog.length; i++)
+        if (_catalog[i].artist == name) i,
+    ];
+    final first = _catalog[indices.first];
+    final song = _currentSong;
+    return Scaffold(
+      appBar: AppBar(),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Column(
+                children: [
+                  _ThumbnailImage(
+                    url: first.artistAvatarUrl ?? first.thumbnailUrl,
+                    width: 140,
+                    height: 140,
+                    borderRadius: 70,
+                    errorIcon: Icons.person,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    name,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      // Scoped shuffle: loops within just this artist.
+                      onPressed: () => _shufflePlayAll(scope: indices),
+                      icon: const Icon(Icons.shuffle),
+                      label: Text('Shuffle ${indices.length} songs'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => _buildTrackRow(indices[i]),
+              childCount: indices.length,
+              addAutomaticKeepAlives: false,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+      bottomNavigationBar: song == null ? null : _buildMiniPlayer(song),
     );
   }
 }
