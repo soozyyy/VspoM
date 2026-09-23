@@ -1,1 +1,1 @@
-The app can now update itself — future versions install from right here, no GitHub download needed.
+Test update — nothing new here, just checking that in-app updates work.
