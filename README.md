@@ -1,88 +1,73 @@
+<div align="center">
+
+<img src="app/assets/icon/vspo_icon.png" width="120" alt="VspoM icon">
+
 # VspoM
 
-A personal, single-user Android app for listening to VSpo! member music (sourced from YouTube, catalog curated by [vspodex.app](https://www.vspodex.app)'s `/music` page) in the background — screen off, other apps open, one screen, shuffle-play-all with continuous looping. Think "a tiny personal Spotify for VSpo songs."
+**A background music player for VSPO! songs on Android.**<br>
+Every VSPO! member song, shuffled and looping, even with the screen off.
 
-No server, no backend, no ongoing cost, and nothing needs to run on a home PC. The catalog refreshes itself via a free GitHub Actions schedule; the app itself just plays music.
+[![Version](https://img.shields.io/badge/version-v1.0.14-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
-This is a **personal-use sideload**, not a Play Store app — no app store listing, no plan to publish it there. It's built for one person's own phone (and anyone else who wants to sideload it the same way).
+[**⬇ Download APK**](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk)
 
-## Installing it on your phone (no PC, no Flutter needed)
+</div>
 
-Every push to `main` automatically builds a signed APK on GitHub's own servers and publishes it to this repo's **[Releases page](https://github.com/soozyyy/VspoM/releases/latest)** — that's the easiest way to get the app, and the only thing you need is the phone itself.
+## Features
 
-1. On your phone, open the **[latest release](https://github.com/soozyyy/VspoM/releases/latest)** and download `app-release.apk`.
-2. Open the downloaded file. Android will ask you to allow installs from that source (your browser or Files app) the first time — approve it, then tap Install. This is the normal "sideloading" flow for any app that isn't from the Play Store.
-3. **First launch — grant two permissions when prompted** (both are one-time, and both matter — the app won't work correctly without them):
-   - **"Draw over other apps"** — lets the app keep playing audio when your screen is off or you switch to another app. Without it, the app only "kind of" works while it's the one on screen.
-   - **Notifications** — without this, the persistent playback notification (with its Stop button) never appears, and there's no way to fully stop playback.
-4. Tap **Shuffle Play All** and it starts playing. Turn the screen off, switch apps, whatever — it keeps going.
+- **Background playback.** Keeps playing with the screen off or while you use other apps.
+- **Shuffle everything**, or just one artist, or just your search results. It loops forever.
+- **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
+- **Now Playing screen** with a big seek bar and an **Up Next** queue. Tap any upcoming song to jump to it.
+- **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
+- **Lock-screen and notification controls**: Previous, Play/Pause, Next. Bluetooth, wired headphone and car buttons work too.
+- **Even volume**: quiet and loud uploads play at about the same level.
+- **Always-fresh song list**: new songs appear automatically every day, no app update needed.
+- **Updates inside the app**: when a new version is out, the app shows what's new and installs it for you.
+- No account, no ads, no server. It's free to run.
 
-To update later, just download the newer `app-release.apk` from the same Releases page and install it over the old one — every build is signed with the same key, so it installs as a normal update rather than needing an uninstall first.
+## Install
 
-### Building it yourself instead
+1. On your phone, download **[app-release.apk](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk)** (about 52 MB).
+2. Open it and tap **Install**. The first time, Android will ask you to allow installs from your browser or Files app. That's normal for any app from outside the Play Store.
+3. Open VspoM and allow the two permissions it asks for:
+   - **Display over other apps**: this is what keeps music playing in the background.
+   - **Notifications**: shows the playback controls.
+4. Tap **Shuffle Play All**.
 
-If you'd rather build from source (e.g. to test a change before it's pushed), see Requirements below, then:
+**Updating:** you don't need to come back here. When a new version is released, the app asks you on launch. Tap **Update**, then **Install**. The permissions you already granted are kept.
 
-```
-git clone https://github.com/soozyyy/VspoM.git
-cd VspoM/app
-flutter pub get
-flutter build apk --release
-```
+## FAQ
 
-The APK lands at `app/build/app/outputs/flutter-apk/app-release.apk` — copy it to your phone the same way (USB transfer, Google Drive, etc.) and install it as in step 2 above. Without a local `android/key.properties` set up (see "Releasing new builds" below), this builds signed with the debug key instead of the release one, which still installs fine on its own but won't match the signature of Releases-page builds — so pick one signing source and stick with it if you plan to keep updating over the same install.
+**Why does it need "Display over other apps"?**
+The music plays through YouTube in a tiny invisible window. Android shuts down video playback in normal app screens when you leave them, but not in an overlay window. Nothing is ever drawn on your screen.
 
-## Requirements
+**How do I stop playback completely?**
+Pause, then swipe the notification away.
 
-**To just install and use the app:** an Android phone. That's it — see "Installing it on your phone" above.
+**Why isn't it on the Play Store?**
+It's a personal project, shared as-is for anyone who wants to sideload it.
 
-**To build the APK yourself instead (your computer, one-time setup):**
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (this project targets Dart `^3.10.1`, whatever ships with a reasonably current Flutter stable release)
-- Android SDK + platform tools (comes bundled if you install Android Studio; `flutter doctor` will point out anything missing)
-- Windows, macOS, or Linux — Flutter's Android build tooling works the same on all three
+**Where do the songs come from?**
+The song list comes from [vspodex.app](https://www.vspodex.app)'s music page. It's refreshed daily, and the audio streams from the original YouTube uploads.
 
-**To run the app (your phone):**
-- Android 8.0 (API 26) or newer
-- Android 13+ phones additionally need the runtime notification permission (the app asks for this automatically)
-- An internet connection at launch, to fetch the current song catalog (falls back to a bundled offline copy if there's no connection yet)
-- "Install unknown apps" allowed for whichever app you use to open the APK file (Android prompts for this automatically the first time)
+---
 
-There is nothing to sign up for, no account, and no ongoing cost — the whole thing runs off GitHub's free tiers (Actions minutes, raw file hosting) plus whatever's already on your phone.
+## For developers
 
-## What the app actually does
+### How background playback works
 
-- One screen: a search box, a header showing either the VSpo logo (nothing playing yet) or the current song's thumbnail, a "Shuffle Play All" button, and a scrollable list of every song in the catalog (thumbnail, title, artist).
-- **Search** matches song titles and artist names — including matching a romanized query against a kanji/kana artist name (e.g. typing "yaku" finds 八雲べに), the same way vspodex.app's own search behaves. It works off vspodex.app's own artist-slug romanization, scraped alongside each song.
-- **Shuffle Play All** shuffles and loops the whole catalog forever. Search first, then hit Shuffle Play All while the list is filtered, and it shuffles and loops just the filtered songs instead (the button relabels itself to say how many songs it'll play).
-- Tapping any individual song plays it immediately and continues shuffling from the full catalog afterward, regardless of any active search filter.
-- A mini-player at the bottom shows previous / play-pause / next controls and a draggable progress bar for whatever's currently playing.
-- Background playback survives turning the screen off, opening other apps, and switching away entirely — see "How playback actually works" below for why that's normally hard to pull off.
-- The persistent playback notification shows the current song's title and artist (not a generic "VSpo Music" label), and its **Stop** button is the one true "fully stop everything" control; the in-app mini-player intentionally only has pause/resume, matching how most background-audio apps separate "pause for a second" from "I'm done."
-- Deliberately excluded: no accounts, no manual song curation, no Add/Edit/Sort UI, no bottom navigation — the catalog is entirely auto-fetched from vspodex.app, so there's nothing to manage by hand.
+`OverlayService.kt` is a foreground service that attaches a plain `WebView` straight to the `WindowManager` as an invisible 1×1 `TYPE_APPLICATION_OVERLAY` window. That window isn't tied to the app's Activity, so backgrounding the app or turning off the screen never tears down its video surface, and the audio keeps going. Flutter drives it over one `MethodChannel` (`vspo_music/overlay`: `playVideo`, `pause`, `resume`, `seek`, `getPosition`, `stop`, and more). One `EventChannel` (`vspo_music/overlay_events`) carries lock-screen and hardware skip presses back up to Dart, which owns the shuffle order. A `MediaSessionCompat` powers the lock-screen and notification controls. There's no `just_audio`, `audio_service` or `youtube_explode_dart`.
 
-## How playback actually works
+**Volume leveling:** each song's `loudnessDb` (read from YouTube's own watch page by the scraper) is stored in the catalog. The injected script turns loud songs down with `video.volume`, and only boosts the rare quiet song through Web Audio. `catalog-scraper/loudness.test.js` guards this against the real catalog.
 
-YouTube's web player renders video into an Android `SurfaceView`, and Android tears that Surface down (killing the video decoder, and the audio riding the same codec pipeline) the instant the hosting Activity's window stops being visible. That means a normal in-app WebView player dies the moment you background the app or turn the screen off — which ruled out every "just embed a WebView in the screen" approach.
+### How the song list stays current
 
-The fix: `OverlayService` (`app/android/.../OverlayService.kt`) runs as a foreground `Service` and adds a plain `android.webkit.WebView` directly to the `WindowManager` as an invisible 1×1 `TYPE_APPLICATION_OVERLAY` window — a system-level window with no relationship to the app's own Activity window. Backgrounding, closing, or switching away from the app has zero effect on it, so its video Surface (and the audio track riding it) never gets torn down. This is the same mechanism real background-audio apps rely on.
+vspodex.app has no public API, and `/music` returns a random ~60–80 song sample per page load. So `catalog-scraper/scrape.js` (Playwright) loads it many times and merges the results by video ID into `catalog.json`. `.github/workflows/refresh-catalog.yml` runs this daily on GitHub's servers and commits the result. The app fetches `catalog.json` from `raw.githubusercontent.com` on every launch, so a new song needs no rebuild. If that fetch fails, it falls back to the copy bundled in the APK.
 
-Flutter talks to this native layer through a single `MethodChannel` (`vspo_music/overlay`): `playVideo`, `pause`, `resume`, `seek`, `getPosition`, `stop`, plus permission checks for the overlay and notifications. No `just_audio`, `audio_service`, or `youtube_explode_dart` — playback is 100% native Android, driven from Dart.
-
-### Volume normalization
-
-Different YouTube uploads are mastered at very different loudness, and YouTube's own per-account "Stable volume" normalization isn't usable from a plain embedded WebView (it requires being signed in). Instead, the JS injected into the overlay's WebView builds a small Web Audio pipeline on every video: a compressor to even out a song's own internal dynamics, a boost-only leveler that raises quiet uploads toward a target level (never lowers an already-loud one), and a limiter to keep the result from ever clipping. It's an approximation, not true LUFS-matched normalization like Spotify's precomputed loudness data, but it noticeably closes the gap between quiet and loud uploads.
-
-## Keeping the catalog in sync with vspodex.app
-
-vspodex.app has no public JSON API (it's a Next.js Server Actions app, and `/api` is explicitly disallowed by its `robots.txt` anyway) — `/music` itself is allowed, so `catalog-scraper/scrape.js` reads that rendered page with a headless browser (Playwright) instead.
-
-One quirk that shaped the whole design: `/music` doesn't serve a stable, complete list — every page load (and every refresh) returns a random ~60-80 track sample of the full catalog. So the scraper does several fresh-page-load passes in one run and merges everything it finds — deduped by YouTube video ID — into whatever `catalog.json` already exists, rather than overwriting it. Coverage climbs toward the full catalog with more passes and more runs over time (a "coupon collector" effect, not a bug).
-
-`.github/workflows/refresh-catalog.yml` runs this automatically and for free: on a daily schedule (and on demand via the repo's Actions tab → "Run workflow"), a GitHub-hosted runner does 20 passes and commits the refreshed `catalog.json` straight back to the repo if anything changed. Nothing runs on your PC or phone for this.
-
-The app itself (`_loadCatalog()` in `lib/main.dart`) fetches that file live from `raw.githubusercontent.com` every time it opens — a single small JSON GET, not a scrape — so new vspodex.app songs show up automatically after the next scheduled refresh, no app rebuild needed. If that fetch fails (offline, first launch before any network, GitHub hiccup), it falls back to the copy bundled into the APK at build time (`app/assets/catalog.json`), and falls back to placeholder mock data if even that's missing.
-
-To manually force a scrape locally instead of waiting on the schedule:
+Run a scrape locally:
 
 ```
 cd catalog-scraper
@@ -91,51 +76,51 @@ npx playwright install chromium   # first time only
 npm run scrape                    # or: PASS_COUNT=20 npm run scrape
 ```
 
-## Project layout
+A local scrape only reaches the app once it's pushed.
 
-```
-VspoM/
-  README.md
-  .github/workflows/
-    refresh-catalog.yml   # scheduled + manual catalog refresh
-    build-apk.yml          # builds a signed APK and publishes it to Releases
-  catalog-scraper/
-    package.json
-    scrape.js         # Playwright scraper against vspodex.app's public /music page
-    catalog.json       # generated output, kept in sync by the workflow above
-  app/                 # Flutter project (created via `flutter create app`)
-    lib/main.dart       # the whole UI + playback control logic
-    android/
-      key.properties.example  # template for the (git-ignored) release signing config
-      app/src/main/kotlin/.../
-        MainActivity.kt    # MethodChannel handler
-        OverlayService.kt  # the background-playback engine (see above)
-    assets/
-      catalog.json            # bundled fallback copy, used offline / before first successful fetch
-      branding/vspo_logo.png  # shown as the header image before anything is playing
-      icon/vspo_icon.png      # source image for the app's launcher icon
-```
-
-## Performance notes
-
-The song list renders roughly 340 thumbnails as you scroll. Thumbnails load through `cached_network_image` rather than a plain network image widget, decoded straight down to their small on-screen size (instead of decoding vspodex.app's full-resolution source image just to shrink it visually) and cached to disk — this is what keeps scrolling smooth and avoids re-downloading every thumbnail each time the app is reopened.
-
-## Releasing new builds (maintainer notes)
-
-`.github/workflows/build-apk.yml` builds a release APK on every push to `main` and publishes it to a rolling `latest` GitHub Release — this is what powers the "Installing it on your phone" section above. It needs two repo secrets (**Settings → Secrets and variables → Actions**) so CI can sign the APK with the project's dedicated `vspo-release` keystore instead of a throwaway debug key:
-
-- `VSPO_KEYSTORE_BASE64` — the keystore file, base64-encoded
-- `VSPO_KEYSTORE_PASSWORD` — its store/key password
-
-Both were generated once and are **not** committed to the repo (see `android/key.properties.example` for the format, and `.gitignore` for what's excluded — `android/key.properties` and `android/app/keystore/`). To build locally with the same signing key GitHub Actions uses (so your local builds and Releases-page builds are interchangeable installs), copy `android/key.properties.example` to `android/key.properties`, fill in the real values, and place the matching `vspo-release.keystore` file at `android/app/keystore/vspo-release.keystore`. Without that local setup, `flutter build apk --release` still works — it just falls back to the debug key, which won't match Releases-page builds signature-wise (fine for a one-off test build, not for installing over an existing sideload).
-
-If the keystore is ever lost, a new one can be generated (`keytool -genkeypair ...`) and the secrets updated — but every phone that has an existing install would then need to uninstall it once before the new signature can be installed, since Android treats a change of signing key as an entirely different app for update purposes.
-
-## Building from source
+### Build from source
 
 ```
 cd app
 flutter pub get
-flutter run                    # test on a connected/emulated device
-flutter build apk --release    # produces the APK to sideload — see "Installing it on your phone" above
+flutter run                    # on a connected device
+flutter build apk --release    # APK at app/build/app/outputs/flutter-apk/app-release.apk
 ```
+
+Without `android/key.properties`, release builds are signed with the debug key. They won't install over a Releases-page build, and a local build always reports version 1, so the app will always offer the update.
+
+### Releases
+
+Every push to `main` that touches `app/` runs `.github/workflows/build-apk.yml`. It builds a signed APK as version `1.0.<run number>` and publishes it to the rolling [`latest`](https://github.com/soozyyy/VspoM/releases/latest) release along with a `version.json`. The app reads that file to decide whether to offer an update.
+
+- **Update notes** come from `app/whats-new.txt` if the push changed it. Otherwise they come from the latest commit's title.
+- **Signing** needs two repo secrets: `VSPO_KEYSTORE_BASE64` and `VSPO_KEYSTORE_PASSWORD`. The keystore and `key.properties` are git-ignored; `android/key.properties.example` shows the format. If the keystore is ever lost, existing installs have to uninstall once, because Android treats a new signing key as a different app.
+
+### Project layout
+
+```
+VspoM/
+  .github/workflows/
+    build-apk.yml          # build, sign, release, version.json
+    refresh-catalog.yml    # daily catalog scrape
+  catalog-scraper/
+    scrape.js              # vspodex.app scraper (Playwright)
+    loudness.js            # loudness extraction + shared player constants
+    loudness.test.js       # volume-leveling checks against the real catalog
+    catalog.json           # the song list the app fetches
+  app/                     # Flutter project
+    lib/main.dart          # all UI + playback sequencing
+    whats-new.txt          # notes shown in the in-app update popup
+    android/app/src/main/kotlin/
+      MainActivity.kt      # channel handlers, version check, APK install
+      OverlayService.kt    # playback engine + MediaSession
+    assets/                # bundled catalog fallback, logo, icon
+```
+
+---
+
+## Credits & disclaimer
+
+The song list comes from [vspodex.app](https://www.vspodex.app). All music belongs to its creators and is streamed from YouTube.
+
+VspoM is an unofficial fan project. It is not affiliated with or endorsed by VSPO!, Brave group, YouTube or Google.
