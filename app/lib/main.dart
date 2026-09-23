@@ -220,6 +220,32 @@ List<Song> _mockCatalog() {
 // callers can size it to match the source's actual aspect ratio instead.
 const _thumbnailZoomScale = 1.3;
 
+// catalog.json's thumbnails are YouTube's maxresdefault, which YouTube only
+// generates for high-res uploads — 11 of 344 songs 404 on it (checked
+// 2026-09-23), e.g. 空澄セナ's フォニイ. hqdefault exists for every video.
+// It's 4:3 with the 16:9 frame letterboxed inside, and BoxFit.cover in a
+// 16:9 box crops exactly those bars off. Null for anything that isn't a
+// YouTube video thumbnail (artist avatars), or is already hqdefault.
+String? _hqFallbackUrl(String url) {
+  final id = RegExp(r'i\.ytimg\.com/vi(?:_webp)?/([^/]+)/')
+      .firstMatch(url)
+      ?.group(1);
+  if (id == null || url.contains('/hqdefault.')) return null;
+  return 'https://i.ytimg.com/vi/$id/hqdefault.jpg';
+}
+
+// errorWidget for any CachedNetworkImage showing a thumbnail: retry once
+// with hqdefault, and only show `orElse` if that fails too.
+Widget _thumbnailFallback(String url, Widget orElse) {
+  final fallback = _hqFallbackUrl(url);
+  if (fallback == null) return orElse;
+  return CachedNetworkImage(
+    imageUrl: fallback,
+    fit: BoxFit.cover,
+    errorWidget: (_, __, ___) => orElse,
+  );
+}
+
 // A cached-network thumbnail with a shared placeholder/error look, used for
 // every video thumbnail and artist avatar in the app (track rows, the mini
 // player, the search-suggestions dropdown). Pass width/height matching the
@@ -258,12 +284,15 @@ class _ThumbnailImage extends StatelessWidget {
           memCacheHeight: (height * 2).round(),
           fadeInDuration: const Duration(milliseconds: 80),
           placeholder: (_, __) => Container(color: Colors.grey.shade800),
-          errorWidget: (_, __, ___) => Container(
-            color: Colors.grey.shade800,
-            child: Icon(
-              errorIcon,
-              color: Colors.white38,
-              size: (width < height ? width : height) * 0.4,
+          errorWidget: (_, __, ___) => _thumbnailFallback(
+            url,
+            Container(
+              color: Colors.grey.shade800,
+              child: Icon(
+                errorIcon,
+                color: Colors.white38,
+                size: (width < height ? width : height) * 0.4,
+              ),
             ),
           ),
         ),
@@ -773,7 +802,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                         // Falls back to the placeholder gradient+icon if the
                         // thumbnail fails to load (e.g. transient network
                         // hiccup), rather than showing a broken-image icon.
-                        errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                        errorWidget: (_, __, ___) =>
+                            _thumbnailFallback(
+                          currentSong.thumbnailUrl,
+                          _buildHeaderPlaceholder(),
+                        ),
                       ),
                     )
                   : _buildHeaderPlaceholder(),
@@ -1260,7 +1293,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                         fadeInDuration: const Duration(milliseconds: 120),
                         placeholder: (_, __) =>
                             Container(color: Colors.grey.shade800),
-                        errorWidget: (_, __, ___) => _buildHeaderPlaceholder(),
+                        errorWidget: (_, __, ___) =>
+                            _thumbnailFallback(
+                          song.thumbnailUrl,
+                          _buildHeaderPlaceholder(),
+                        ),
                       ),
                     ),
                   ),
