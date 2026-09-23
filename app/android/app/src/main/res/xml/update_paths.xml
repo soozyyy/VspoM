@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Folder the in-app updater downloads into, shared with the system
+     installer via the FileProvider in AndroidManifest.xml. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

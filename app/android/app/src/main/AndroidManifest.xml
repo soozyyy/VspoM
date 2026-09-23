@@ -13,6 +13,10 @@
          once in system Settings (handled via
          Settings.ACTION_MANAGE_OVERLAY_PERMISSION in MainActivity.kt). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <!-- In-app updates: lets the app hand a downloaded APK to Android's
+         installer. The first time, Android asks the user to allow VspoM to
+         install apps (a one-off toggle); after that it's just "Install". -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="VspoM"
@@ -48,6 +52,18 @@
             android:name=".OverlayService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
+
+        <!-- In-app updates: shares the downloaded APK (in cache/updates/)
+             with the system installer. See MainActivity "installApk". -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

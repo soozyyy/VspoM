@@ -6,8 +6,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import java.io.File
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -172,6 +175,42 @@ class MainActivity : FlutterActivity() {
                             )
                         }
                     }
+                }
+
+                // In-app updates (see _checkForUpdate in main.dart). CI sets
+                // versionCode to the workflow run number and versionName to
+                // 1.0.<run number>, matching what it writes to version.json.
+                "getAppVersion" -> {
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    result.success(
+                        mapOf(
+                            "build" to PackageInfoCompat.getLongVersionCode(info),
+                            "version" to (info.versionName ?: "")
+                        )
+                    )
+                }
+
+                // Where Dart should download the update APK. Must sit under
+                // cache/updates/, the folder res/xml/update_paths.xml shares.
+                "updateApkPath" -> {
+                    val dir = File(cacheDir, "updates").apply { mkdirs() }
+                    result.success(File(dir, "update.apk").absolutePath)
+                }
+
+                // Opens Android's own "Do you want to update this app?"
+                // screen. If installing from VspoM isn't allowed yet, the
+                // installer itself asks for that first, then continues.
+                // Installing over the existing app (same signing key) keeps
+                // every permission already granted.
+                "installApk" -> {
+                    val file = File(call.argument<String>("path")!!)
+                    val uri = FileProvider.getUriForFile(this, "$packageName.updates", file)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    result.success(null)
                 }
 
                 else -> result.notImplemented()
