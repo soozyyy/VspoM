@@ -159,6 +159,9 @@ class OverlayService : Service() {
                 override fun onSkipToNext() = askDartFor("skipNext")
                 override fun onSkipToPrevious() = askDartFor("skipPrevious")
             })
+            // Without this, some OEM media players (Samsung, MIUI, ...) reuse
+            // the last media app's tap target and open Twitter/YouTube instead.
+            setSessionActivity(openAppPendingIntent())
         }
         // These two can only be received at runtime — they are not deliverable
         // to a manifest-declared receiver, which is why this is registered here.
@@ -240,6 +243,18 @@ class OverlayService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+    /** Tap target for the notification and media player: brings VspoM to the front. */
+    private fun openAppPendingIntent(): PendingIntent =
+        PendingIntent.getActivity(
+            this,
+            100,
+            Intent(this, MainActivity::class.java)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
     /**
      * The one place the notification is assembled, from the fields above.
      * Re-called on every pause/resume, not just on a new song.
@@ -292,6 +307,7 @@ class OverlayService : Service() {
                 servicePendingIntent(ACTION_SKIP_NEXT, 4)
             )
             .setOngoing(isPlaying)
+            .setContentIntent(openAppPendingIntent())
             .setDeleteIntent(servicePendingIntent(ACTION_STOP, 0))
             .build()
     }
