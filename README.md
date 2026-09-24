@@ -7,7 +7,7 @@
 **A background music player for VSPO! songs on Android.**<br>
 Every VSPO! member song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.14-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.15-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
