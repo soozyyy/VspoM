@@ -75,8 +75,9 @@ class OverlayService : Service() {
         // relative to its -14 LUFS reference (positive = louder than
         // reference). Scraped per-song into catalog.json and carried through
         // Dart -> here -> the injected script, where it sets the playback
-        // gain. Absent/NaN means "unknown", which the script treats as
-        // gain 1.0 (no change).
+        // gain. Absent/NaN means "unknown": the script then reads the value
+        // from the watch page itself, and only if that fails too leaves
+        // YouTube's own level alone.
         const val EXTRA_LOUDNESS_DB = "loudnessDb"
         private const val NOTIFICATION_CHANNEL_ID = "vspo_music_overlay"
         private const val NOTIFICATION_ID = 1001
@@ -446,6 +447,11 @@ class OverlayService : Service() {
         // Interpolated into the script below as a JS number literal, or the
         // literal `null` when the catalog has no loudness for this song.
         val loudnessLiteral = currentLoudnessDb?.toString() ?: "null"
+        // The video this page is supposed to be showing, so the page-side
+        // loudness fallback can refuse player data that belongs to some other
+        // video (e.g. after an in-page navigation). JSON-quoted to be a safe
+        // JS string literal whatever it contains.
+        val videoIdLiteral = currentVideoId?.let { org.json.JSONObject.quote(it) } ?: "null"
         return """
         (function() {
           if (window.__vspoInitialized) { return; }
@@ -459,6 +465,8 @@ class OverlayService : Service() {
           // reference. Baked in from Kotlin per page load; null when the
           // catalog has no value for this song yet.
           var loudnessDb = $loudnessLiteral;
+          // Which video this page load is for. See pageLoudnessDb().
+          var expectedVideoId = $videoIdLiteral;
           // Calibration knob: the level every song is normalized to, in dB
           // relative to YouTube's -14 LUFS reference. 0 would mean "match
           // YouTube"; raise it toward 0 if the app feels too quiet, lower it
@@ -603,7 +611,7 @@ class OverlayService : Service() {
           // Pure function, no DOM — loudness.test.js lifts it from this file
           // and checks the routing, so it can't drift from what ships.
           //
-          //   'leave'  - no catalog value. Touch NOTHING: YouTube's own
+          //   'leave'  - no loudness known. Touch NOTHING: YouTube's own
           //              normalization is already on the element and stomping
           //              it is what caused the original volume problem.
           //   'volume' - song needs turning DOWN. video.volume does that
@@ -611,8 +619,8 @@ class OverlayService : Service() {
           //   'boost'  - song needs turning UP. video.volume caps at 1, so
           //              this is the only case that needs a gain node.
           //
-          // On the real 344-song catalog that's 320 'volume', 24 'boost' —
-          // i.e. 93% of playback never enters the Web Audio graph.
+          // On the real 344-song catalog at offset -6 that's 342 'volume', 2
+          // 'boost' — 99% of playback never enters the Web Audio graph.
           function plan(db) {
             if (db === null || !isFinite(db)) return { mode: 'leave', target: 1 };
             var target = Math.pow(10, (TARGET_OFFSET_DB - db) / 20);
@@ -628,10 +636,36 @@ class OverlayService : Service() {
             return Math.min(MAX_GAIN, Math.max(MIN_GAIN, target / v0));
           }
 
-          // Keeps an element at its target volume. Cheap enough to call every
-          // tick: setting .volume to the value it already holds is a no-op in
-          // the media element, and this self-heals if YouTube (or anything
-          // else) moves it afterwards.
+          // YouTube's own loudness for this video, read from the page's player
+          // data — the same audioConfig.loudnessDb the scraper stores in the
+          // catalog, so it is on the same scale. Used only when the catalog
+          // has no value (failed nightly fetch, offline launch on the bundled
+          // catalog, a song newer than the last scrape). Returns null unless
+          // the player data is provably for THIS video, so a stale response
+          // left over from an in-page navigation can never be applied.
+          function pageLoudnessDb() {
+            var responses = [];
+            try { responses.push(window.ytInitialPlayerResponse); } catch (e) {}
+            try {
+              var mp = document.getElementById('movie_player');
+              if (mp && mp.getPlayerResponse) responses.push(mp.getPlayerResponse());
+            } catch (e) {}
+            for (var i = 0; i < responses.length; i++) {
+              var r = responses[i];
+              try {
+                if (!r || !r.videoDetails || r.videoDetails.videoId !== expectedVideoId) continue;
+                var db = r.playerConfig.audioConfig.loudnessDb;
+                if (typeof db === 'number' && isFinite(db)) return db;
+              } catch (e) {}
+            }
+            return null;
+          }
+
+          // Keeps an element at its target volume. Called on every tick AND
+          // from a volumechange listener (see the tick), so if YouTube moves
+          // the volume after we've set it, it's put back straight away
+          // instead of up to 500 ms later. Setting .volume to the value it
+          // already holds is a no-op, so the listener can't loop on itself.
           function enforceVolume(v) {
             if (!v || v.__vspoTargetVol === undefined) return;
             if (Math.abs(v.volume - v.__vspoTargetVol) <= 0.005) return;
@@ -644,9 +678,25 @@ class OverlayService : Service() {
           function applyLoudness(v) {
             if (v.__vspoTuned) { return; }
             v.__vspoTuned = true;
+            // Decided ONCE per song, here, before the first unmute — never
+            // revisited later in the song, so the level can't jump mid-song.
+            var pageDb = pageLoudnessDb();
+            // One line per song, so a device log shows whether the page
+            // fallback can see the value at all on m.youtube.com.
+            log('loudness sources: catalog=' + loudnessDb + ' page=' + pageDb);
+            if (loudnessDb === null) {
+              if (pageDb !== null) {
+                loudnessDb = pageDb;
+                log('no catalog loudness - using the page\'s own value ' + pageDb);
+              }
+            } else if (pageDb !== null && Math.abs(pageDb - loudnessDb) > 0.5) {
+              // Diagnostic only: the catalog still wins, it's what the tests
+              // and the nightly report are checked against.
+              log('LOUDNESS MISMATCH catalog=' + loudnessDb + ' page=' + pageDb);
+            }
             var p = plan(loudnessDb);
             if (p.mode === 'leave') {
-              log('no loudness for this song - leaving YouTube\'s own level alone');
+              log('no loudness for this song (catalog or page) - leaving YouTube\'s own level alone');
               return;
             }
             if (p.mode === 'volume') {
@@ -782,6 +832,19 @@ class OverlayService : Service() {
               log('NEW video element (first load or swap), src=' + (v.currentSrc || v.src || '?'));
               window.__vspoHookedVideo = v;
               applyLoudness(v);
+              // Hold the level without waiting for the next tick. Same two
+              // actions the tick performs below; both are no-ops unless the
+              // volume actually moved away from what we want.
+              if (!v.__vspoVolListener) {
+                v.__vspoVolListener = true;
+                v.addEventListener('volumechange', function() {
+                  enforceVolume(v);
+                  if (v.__vspoRetune && v.volume !== v.__vspoLastVol) {
+                    v.__vspoLastVol = v.volume;
+                    v.__vspoRetune();
+                  }
+                });
+              }
             } else if (window.__vspoAudioCtx && window.__vspoAudioCtx.state === 'suspended') {
               // Retry every tick, not just once at setup — if this ever
               // gets stuck suspended, that alone would cause total silence

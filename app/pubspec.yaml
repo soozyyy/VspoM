@@ -55,6 +55,11 @@ dependencies:
   # display size (memCacheWidth/Height) and also disk-caches thumbnails so
   # re-opening the app doesn't re-download and re-decode all of them again.
   cached_network_image: ^3.4.1
+  # Where the last successfully downloaded catalog.json is kept, so a launch
+  # with no/slow network still gets loudness data and the full song list
+  # instead of the older copy bundled in the APK. Already in the dependency
+  # tree via cached_network_image; listed here because main.dart uses it.
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:

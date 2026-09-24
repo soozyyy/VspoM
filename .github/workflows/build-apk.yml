@@ -60,6 +60,20 @@ jobs:
           keyAlias=vspo-release
           storeFile=keystore/vspo-release.keystore
           EOF
+      
+      # Guards the volume-leveling code that is about to ship. The nightly
+      # catalog job only runs the lenient `npm test`. No npm install needed.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check volume leveling logic
+        working-directory: catalog-scraper
+        run: node loudness.test.js
+
+      # Keeps the offline-fallback copy of the song list fresh on every build.
+      - name: Bundle the current catalog as the offline fallback
+        run: cp ../catalog-scraper/catalog.json assets/catalog.json
 
       - name: Install dependencies
         run: flutter pub get

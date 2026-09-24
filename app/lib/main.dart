@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path_provider/path_provider.dart';
 
 // ---------------------------------------------------------------------------
 // PHASE 5 — real playlist UI
@@ -136,13 +137,21 @@ const _remoteCatalogUrl =
 
 /// Loads the VSpo catalog, freshest source first:
 /// 1. Live fetch from GitHub (_remoteCatalogUrl) — picks up whatever the
-///    scheduled scrape last found, no app rebuild needed.
-/// 2. The copy bundled at build time as assets/catalog.json, for when
-///    there's no network yet (first launch, airplane mode, etc.).
-/// 3. Mock placeholder data, so the app still runs before either exists.
+///    scheduled scrape last found, no app rebuild needed. Saved to disk on
+///    success (see _saveCachedCatalog).
+/// 2. The last catalog that live fetch saved, for a launch with no or slow
+///    network. Without this, such a launch fell straight to (3), which can
+///    be much older — and an old copy without loudnessDb turns volume
+///    leveling off for the whole session.
+/// 3. The copy bundled at build time as assets/catalog.json, for the very
+///    first launch with no network.
+/// 4. Mock placeholder data, so the app still runs before any of these exist.
 Future<List<Song>> _loadCatalog() async {
   final remote = await _fetchRemoteCatalog();
   if (remote != null && remote.isNotEmpty) return remote;
+
+  final cached = await _loadCachedCatalog();
+  if (cached != null && cached.isNotEmpty) return cached;
 
   try {
     final raw = await rootBundle.loadString('assets/catalog.json');
@@ -169,15 +178,48 @@ Future<List<Song>?> _fetchRemoteCatalog() async {
     if (response.statusCode != 200) return null;
     final body = await response.transform(utf8.decoder).join();
     final decoded = jsonDecode(body) as List<dynamic>;
+    final songs = decoded
+        .map((e) => Song.fromJson(e as Map<String, dynamic>))
+        .toList();
+    // Only a body that fully parsed is worth keeping. Not awaited: a slow
+    // disk must never delay the song list.
+    if (songs.isNotEmpty) _saveCachedCatalog(body);
+    return songs;
+  } catch (_) {
+    // Offline, DNS failure, GitHub hiccup, malformed JSON, etc. — the
+    // cached and bundled fallbacks in _loadCatalog() cover all of these.
+    return null;
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Future<File> _cachedCatalogFile() async =>
+    File('${(await getApplicationSupportDirectory()).path}/catalog.json');
+
+Future<void> _saveCachedCatalog(String body) async {
+  try {
+    // Write-then-rename, so a crash mid-write can't leave a truncated file
+    // that would then be the fallback.
+    final file = await _cachedCatalogFile();
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(body, flush: true);
+    await tmp.rename(file.path);
+  } catch (_) {
+    // Caching is best-effort; the bundled asset is still there.
+  }
+}
+
+Future<List<Song>?> _loadCachedCatalog() async {
+  try {
+    final file = await _cachedCatalogFile();
+    if (!await file.exists()) return null;
+    final decoded = jsonDecode(await file.readAsString()) as List<dynamic>;
     return decoded
         .map((e) => Song.fromJson(e as Map<String, dynamic>))
         .toList();
   } catch (_) {
-    // Offline, DNS failure, GitHub hiccup, malformed JSON, etc. — the
-    // bundled-asset fallback in _loadCatalog() covers all of these.
     return null;
-  } finally {
-    client.close(force: true);
   }
 }
 
@@ -409,7 +451,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   int _playOrderIndex = 0;
   int? _currentSongIndex;
   bool? _hasPermission;
-  bool? _hasNotificationPermission;
   bool _playing = false;
   bool _isPaused = false;
 
@@ -606,20 +647,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   Future<void> _checkPermission() async {
     final granted =
         await _overlayChannel.invokeMethod<bool>('hasOverlayPermission');
-    final notificationGranted = await _overlayChannel
-        .invokeMethod<bool>('hasNotificationPermission');
     setState(() {
       _hasPermission = granted ?? false;
-      _hasNotificationPermission = notificationGranted ?? false;
     });
   }
 
   Future<void> _requestPermission() async {
     await _overlayChannel.invokeMethod('requestOverlayPermission');
-  }
-
-  Future<void> _requestNotificationPermission() async {
-    await _overlayChannel.invokeMethod('requestNotificationPermission');
   }
 
   // When set, shuffling (including the auto-reshuffle that happens when a
@@ -797,8 +831,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
               child: _buildHeader(currentSong, visibleIndices.length),
             ),
             if (_hasPermission == false) SliverToBoxAdapter(child: _buildPermissionBanner()),
-            if (_hasNotificationPermission == false)
-              SliverToBoxAdapter(child: _buildNotificationPermissionBanner()),
             if (_searchQuery.isNotEmpty && visibleIndices.isEmpty)
               SliverToBoxAdapter(child: _buildNoResults())
             else
@@ -1084,35 +1116,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           TextButton(
             onPressed: _requestPermission,
             child: const Text('Grant'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotificationPermissionBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.deepPurple.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.notifications_off_outlined,
-              color: Colors.deepPurpleAccent),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Allow notifications so you can see the playback notification '
-              'and use its Stop button to fully stop the music.',
-              style: TextStyle(fontSize: 12.5, color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: _requestNotificationPermission,
-            child: const Text('Allow'),
           ),
         ],
       ),
