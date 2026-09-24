@@ -1,1 +1,2 @@
 Fixed: tapping the music notification sometimes opened another app (like Twitter or YouTube) instead of VspoM.
+New: the song artwork, time and progress bar now show in the media player, and you can drag the bar to skip around.

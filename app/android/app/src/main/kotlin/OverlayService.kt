@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -117,6 +119,14 @@ class OverlayService : Service() {
     private var currentArtist = "Playing in the background"
     private var isPlaying = false
 
+    // For the system media card's scrubber and artwork. Duration and position
+    // come from Dart's 500 ms getPosition() poll; between updates Android
+    // extrapolates the position itself from the published PLAYING state.
+    private var currentVideoId: String? = null
+    private var durationMs = 0L
+    private var positionMs = 0L
+    private var artwork: Bitmap? = null
+
     // Loudness of the song currently being loaded. Read by injectionScript()
     // so every injection for this page (onPageStarted, onPageFinished, and
     // the scheduled re-pokes) carries the same value. Set before loadVideo()
@@ -204,18 +214,14 @@ class OverlayService : Service() {
                     currentTitle = title
                     currentArtist = artist
                     isPlaying = true
+                    currentVideoId = videoId
+                    durationMs = 0L
+                    positionMs = 0L
+                    artwork = null
                     mediaSession?.isActive = true
-                    mediaSession?.setMetadata(
-                        MediaMetadataCompat.Builder()
-                            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-                            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-                            // Deliberately no METADATA_KEY_DURATION: without a
-                            // duration the lock screen shows no scrubber, so
-                            // there's no position to keep in sync with the
-                            // <video> element. Artwork is a later phase.
-                            .build()
-                    )
+                    publishMetadata()
                     publishState()
+                    loadArtwork(videoId)
                     startForeground(NOTIFICATION_ID, buildNotification())
                     showOverlay(videoId, loudnessDb)
                 }
@@ -242,6 +248,45 @@ class OverlayService : Service() {
             Intent(this, OverlayService::class.java).setAction(action),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+    /** Title/artist always; duration and artwork once known (0/null = omitted). */
+    private fun publishMetadata() {
+        mediaSession?.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                .apply {
+                    if (durationMs > 0) putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs)
+                    artwork?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
+                }
+                .build()
+        )
+    }
+
+    /**
+     * Fetches the song's YouTube thumbnail (a fixed URL per video ID, ~10 KB)
+     * off the main thread. Dropped if the song changed or the service died
+     * while it was downloading.
+     */
+    private fun loadArtwork(videoId: String) {
+        Thread {
+            val bitmap = try {
+                java.net.URL("https://i.ytimg.com/vi/$videoId/mqdefault.jpg").openConnection().run {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    getInputStream().use { BitmapFactory.decodeStream(it) }
+                }
+            } catch (e: Exception) {
+                null
+            } ?: return@Thread
+            mainHandler.post {
+                if (instance !== this@OverlayService || currentVideoId != videoId) return@post
+                artwork = bitmap
+                publishMetadata()
+                refreshNotification()
+            }
+        }.start()
+    }
 
     /** Tap target for the notification and media player: brings VspoM to the front. */
     private fun openAppPendingIntent(): PendingIntent =
@@ -288,6 +333,7 @@ class OverlayService : Service() {
             .setContentTitle(currentTitle)
             .setContentText(currentArtist)
             .setSmallIcon(R.drawable.ic_bg_service_small)
+            .setLargeIcon(artwork)
             .setStyle(
                 MediaStyle()
                     .setMediaSession(mediaSession?.sessionToken)
@@ -347,11 +393,10 @@ class OverlayService : Service() {
                 .setState(
                     if (isPlaying) PlaybackStateCompat.STATE_PLAYING
                     else PlaybackStateCompat.STATE_PAUSED,
-                    // The real position lives in the <video> element and is
-                    // only readable asynchronously (getPosition). Since no
-                    // duration is published either, nothing displays it —
-                    // reporting UNKNOWN is honest and costs nothing.
-                    PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                    // Last known position; Android extrapolates from here
+                    // while PLAYING, so this only needs re-publishing on
+                    // pause/resume/seek/new song/duration change.
+                    positionMs,
                     1f
                 )
                 .build()
@@ -951,6 +996,30 @@ class OverlayService : Service() {
             "(function(){var v=document.querySelector('video'); if(v) v.currentTime=$seconds;})();",
             null
         )
+        positionMs = (seconds * 1000).toLong()
+        publishState()
+    }
+
+    /**
+     * Feeds each getPosition() reading into the media session. Duration is
+     * published once per song (and again if it changes, e.g. an ad finishing);
+     * position only when Android's extrapolated value has drifted >2 s from
+     * the real one (buffering, a seek from inside the page).
+     */
+    private fun onPositionPolled(curSec: Double, durSec: Double) {
+        positionMs = (curSec * 1000).toLong()
+        val newDurationMs = (durSec * 1000).toLong()
+        if (newDurationMs > 0 && newDurationMs != durationMs) {
+            durationMs = newDurationMs
+            publishMetadata()
+            publishState()
+            return
+        }
+        val s = mediaSession?.controller?.playbackState ?: return
+        val expected = if (s.state == PlaybackStateCompat.STATE_PLAYING)
+            s.position + (android.os.SystemClock.elapsedRealtime() - s.lastPositionUpdateTime)
+        else s.position
+        if (kotlin.math.abs(expected - positionMs) > 2000) publishState()
     }
 
     /**
@@ -984,6 +1053,7 @@ class OverlayService : Service() {
                 // the actual JSON object it contains.
                 val inner = org.json.JSONTokener(rawResult).nextValue() as String
                 val json = org.json.JSONObject(inner)
+                onPositionPolled(json.optDouble("cur", 0.0), json.optDouble("dur", 0.0))
                 callback(
                     json.optDouble("cur", 0.0),
                     json.optDouble("dur", 0.0),
