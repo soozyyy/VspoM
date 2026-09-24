@@ -5,7 +5,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- No POST_NOTIFICATIONS: the playback notification is a MediaStyle
+         notification bound to a MediaSession, which Android 13+ shows
+         without that permission (media-session exemption). -->
     <!-- PHASE 4: invisible overlay. Lets OverlayService draw a 1x1 window
          on top of everything else — this is what keeps the WebView's video
          Surface alive independent of MainActivity's lifecycle. Android does

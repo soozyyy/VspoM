@@ -1,14 +1,10 @@
 package com.soozyyy.vspomusic.vspo_music
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import java.io.File
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -25,7 +21,6 @@ class MainActivity : FlutterActivity() {
     // main.dart). So a hardware or lock-screen skip is a round trip —
     // session callback -> here -> Dart's _next()/_previous() -> playVideo.
     private val EVENTS_CHANNEL = "vspo_music/overlay_events"
-    private val NOTIFICATION_PERMISSION_REQUEST_CODE = 4201
 
     companion object {
         /**
@@ -85,37 +80,6 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
-                // Starting with Android 13 (API 33), POST_NOTIFICATIONS is a
-                // runtime permission — declaring it in the manifest alone is
-                // not enough. Without this being granted, startForeground()
-                // in OverlayService still succeeds and audio still plays, but
-                // the system silently shows no notification at all, which
-                // means no visible Stop action either. This is exactly what
-                // was happening: the overlay itself was fine, but there was
-                // no notification to see or stop it from.
-                "hasNotificationPermission" -> {
-                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ContextCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.POST_NOTIFICATIONS
-                        ) == PackageManager.PERMISSION_GRANTED
-                    } else {
-                        true
-                    }
-                    result.success(granted)
-                }
-
-                "requestNotificationPermission" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ActivityCompat.requestPermissions(
-                            this,
-                            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                            NOTIFICATION_PERMISSION_REQUEST_CODE
-                        )
-                    }
-                    result.success(null)
-                }
-
                 "playVideo" -> {
                     val videoId = call.argument<String>("videoId")
                     val title = call.argument<String>("title")
@@ -123,7 +87,7 @@ class MainActivity : FlutterActivity() {
                     // Null for a song whose catalog entry predates the
                     // loudness scrape. NaN is the "unknown" marker the
                     // service reads back, and the injected script treats
-                    // that as gain 1.0 (leave the level alone).
+                    // that as "unknown" (reads it from the page, else leaves the level alone).
                     val loudnessDb = call.argument<Double>("loudnessDb")
                     val serviceIntent = Intent(this, OverlayService::class.java).apply {
                         action = OverlayService.ACTION_PLAY

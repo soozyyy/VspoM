@@ -48,7 +48,7 @@
 
 import { chromium } from 'playwright';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { fetchLoudnessDb, readPlayerSource, playerConstants } from './loudness.js';
+import { fetchLoudnessDb, readPlayerSource, playerConstants, warn } from './loudness.js';
 
 const MUSIC_URL = 'https://www.vspodex.app/zh-Hant/music';
 const EXPECTED_TOTAL = 343; // shown on the page as "343 首" at time of writing; just a hint, not enforced
@@ -236,9 +236,19 @@ async function fillLoudness(tracks) {
   }
   console.log(
     `Loudness: got ${ok}/${todo.length}. ` +
-      `${todo.length - ok} had none (will be retried next run; the app plays ` +
-      `those at YouTube's own level).`,
+      `${todo.length - ok} had none (will be retried next run; until then the ` +
+      `app reads those from the YouTube page itself at play time).`,
   );
+  // Most/all failing at once is not one dead video, it's YouTube refusing
+  // this runner (bot check, consent page) or changing the page format. The
+  // app falls back to reading the value from the page itself, so nothing
+  // breaks, but it should be visible on the run page rather than buried here.
+  if (todo.length >= 3 && ok < todo.length / 2) {
+    warn(
+      `Loudness fetch failed for ${todo.length - ok} of ${todo.length} songs. ` +
+        `YouTube may be blocking this runner or have changed the watch page.`,
+    );
+  }
 }
 
 // Reports how the freshly-scraped catalog lines up against the player's
@@ -282,8 +292,8 @@ function reportLoudnessCoverage(tracks) {
     return;
   }
   for (const { t, boostDb } of clamped) {
-    console.log(
-      `  WARNING: "${t.title}" needs +${boostDb.toFixed(1)} dB but the cap is ` +
+    warn(
+      `"${t.title}" needs +${boostDb.toFixed(1)} dB but the cap is ` +
         `+${maxBoostDb.toFixed(1)} dB — it will play about ` +
         `${(boostDb - maxBoostDb).toFixed(1)} dB quieter than everything else.`,
     );

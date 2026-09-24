@@ -54,12 +54,30 @@ export function playerConstants(src) {
 }
 
 /**
+ * Emits a warning that stands out: a GitHub Actions annotation (shown on the
+ * run's summary page) when running in CI, a plain console warning otherwise.
+ */
+export function warn(msg) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::warning::${msg.replace(/\n/g, '%0A')}`);
+  } else {
+    console.warn(`WARNING: ${msg}`);
+  }
+}
+
+/**
  * Pulls loudnessDb out of watch-page HTML. Returns null if the field isn't
  * there, rather than throwing — a page that fails to parse should cost one
  * song's value, not the whole run.
  */
 export function extractLoudnessDb(html) {
-  const m = html.match(/"loudnessDb"\s*:\s*(-?[\d.]+)/);
+  // Prefer playerConfig.audioConfig — the per-video value YouTube's player
+  // normalizes with. The page also carries per-format copies (one per audio
+  // stream in streamingData.adaptiveFormats) which have matched it to within
+  // 0.01 dB in every live check so far, so they're only the fallback.
+  const m =
+    html.match(/"audioConfig"\s*:\s*\{[^}]*?"loudnessDb"\s*:\s*(-?[\d.]+)/) ||
+    html.match(/"loudnessDb"\s*:\s*(-?[\d.]+)/);
   if (!m) return null;
   const value = Number(m[1]);
   return Number.isFinite(value) ? Number(value.toFixed(2)) : null;
