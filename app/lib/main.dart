@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 
 part 'catalog.dart';
+part 'playlists.dart';
 part 'update_dialog.dart';
 part 'widgets.dart';
 
@@ -20,13 +21,15 @@ part 'widgets.dart';
 //   catalog.dart        Song model + loading catalog.json
 //                       (remote -> on-device cache -> bundled -> mock)
 //   widgets.dart        thumbnails + the Artists debut order
+//   playlists.dart      the Playlists tab + its pages (Feature 6)
 //   update_dialog.dart  in-app update check + "Update available" dialog
 // Imports live here only; part files can't have their own.
 //
-// Deliberately OMITTED vs. the Spotify reference screenshot, per explicit
-// user instruction: the Add/Edit/Sort management row, the bottom navigation
-// bar, and any manual curation UI — the catalog comes from vspodex.app via
-// the scraper, so there's nothing to curate in-app.
+// The footer has two tabs, Library (this screen's song list) and Playlists
+// (playlists.dart). Playlists are the only curation: songs are added from
+// the Playlists pages, and there's deliberately no favourite/like button on
+// songs anywhere else. (Until v1.0.19 there were no playlists and no footer
+// by design; the user changed that on 2026-09-28.)
 // ---------------------------------------------------------------------------
 
 void main() {
@@ -85,6 +88,20 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   bool _playing = false;
   bool _isPaused = false;
 
+  // Playlists (playlists.dart). _tab is the footer tab: 0 Library,
+  // 1 Playlists. _inOrder means _playOrder is a playlist played in order,
+  // so running off the end restarts it instead of reshuffling.
+  List<Playlist> _playlists = [];
+  bool _playlistsLoaded = false;
+  int _tab = 0;
+  bool _inOrder = false;
+
+  // The one way to change _playlists: repaints and saves to disk.
+  void _editPlaylists(VoidCallback fn) {
+    setState(fn);
+    _queueSavePlaylists(_playlists);
+  }
+
   // Progress-bar state, refreshed by polling the native side.
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -117,6 +134,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       setState(() {
         _catalog = songs;
         _loadingCatalog = false;
+      });
+    });
+    _loadPlaylists().then((lists) {
+      if (!mounted) return;
+      setState(() {
+        _playlists = lists;
+        _playlistsLoaded = true;
       });
     });
     // Routed straight into the same _next()/_previous() the mini-player
@@ -311,8 +335,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     if (_playOrder.isEmpty) return;
     if (orderIndex < 0) return;
     if (orderIndex >= _playOrder.length) {
-      // Reached the end of the shuffled list — reshuffle and loop forever.
-      _newShuffleOrder();
+      // Reached the end of the list — reshuffle and loop forever, or, for a
+      // playlist played in order, start the same order over.
+      if (!_inOrder) _newShuffleOrder();
       orderIndex = 0;
     }
     final songIndex = _playOrder[orderIndex];
@@ -353,6 +378,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         scope ?? (_searchQuery.isEmpty ? null : _visibleIndices);
     if (filtered != null && filtered.isEmpty) return;
     _shuffleScope = filtered;
+    _inOrder = false;
     _newShuffleOrder();
     await _playSongAt(0);
   }
@@ -366,6 +392,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     // catalog, regardless of any active search filter or prior scoped
     // shuffle — matches the pre-search behavior.
     _shuffleScope = null;
+    _inOrder = false;
     _newShuffleOrder(startingWith: songIndex);
     await _playSongAt(0);
   }
@@ -449,39 +476,84 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
     final visibleIndices = _visibleIndices;
 
-    return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _buildSearchBar()),
-            if (_searchFocusNode.hasFocus &&
-                _searchQuery.isNotEmpty &&
-                _suggestions.isNotEmpty)
-              SliverToBoxAdapter(child: _buildSuggestions(_suggestions)),
-            SliverToBoxAdapter(
-              child: _buildHeader(currentSong, visibleIndices.length),
-            ),
-            if (_hasPermission == false) SliverToBoxAdapter(child: _buildPermissionBanner()),
-            if (_searchQuery.isNotEmpty && visibleIndices.isEmpty)
-              SliverToBoxAdapter(child: _buildNoResults())
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => _buildTrackRow(visibleIndices[i]),
-                  childCount: visibleIndices.length,
-                  // Rows are stateless (no TextField/PageStorage/etc to
-                  // preserve), so skip the extra keep-alive bookkeeping
-                  // Flutter otherwise wraps around every list item.
-                  addAutomaticKeepAlives: false,
-                ),
+    // Back on the Playlists tab goes to Library first, then exits.
+    return PopScope(
+      canPop: _tab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _tab = 0);
+      },
+      child: Scaffold(
+        // IndexedStack keeps the Library tab (scroll, search) alive while the
+        // Playlists tab is showing.
+        body: IndexedStack(
+          index: _tab,
+          children: [
+            SafeArea(
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildSearchBar()),
+                  if (_searchFocusNode.hasFocus &&
+                      _searchQuery.isNotEmpty &&
+                      _suggestions.isNotEmpty)
+                    SliverToBoxAdapter(child: _buildSuggestions(_suggestions)),
+                  SliverToBoxAdapter(
+                    child: _buildHeader(currentSong, visibleIndices.length),
+                  ),
+                  if (_hasPermission == false) SliverToBoxAdapter(child: _buildPermissionBanner()),
+                  if (_searchQuery.isNotEmpty && visibleIndices.isEmpty)
+                    SliverToBoxAdapter(child: _buildNoResults())
+                  else
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => _buildTrackRow(visibleIndices[i]),
+                        childCount: visibleIndices.length,
+                        // Rows are stateless (no TextField/PageStorage/etc to
+                        // preserve), so skip the extra keep-alive bookkeeping
+                        // Flutter otherwise wraps around every list item.
+                        addAutomaticKeepAlives: false,
+                      ),
+                    ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                ],
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            ),
+            SafeArea(child: _buildPlaylistsTab()),
+          ],
+        ),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (currentSong != null)
+              // The footer below handles the bottom system inset, so the
+              // mini-player mustn't add it too.
+              MediaQuery.removePadding(
+                context: context,
+                removeBottom: true,
+                child: _buildMiniPlayer(currentSong),
+              ),
+            NavigationBar(
+              height: 64,
+              selectedIndex: _tab,
+              onDestinationSelected: (i) {
+                _searchFocusNode.unfocus();
+                setState(() => _tab = i);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.library_music_outlined),
+                  selectedIcon: Icon(Icons.library_music),
+                  label: 'Library',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.queue_music_outlined),
+                  selectedIcon: Icon(Icons.queue_music),
+                  label: 'Playlists',
+                ),
+              ],
+            ),
           ],
         ),
       ),
-      bottomNavigationBar: currentSong == null
-          ? null
-          : _buildMiniPlayer(currentSong),
     );
   }
 
@@ -755,7 +827,8 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
   // onTap defaults to "start a new shuffle from this song" (library list);
   // the Up Next list passes its own to jump within the current order.
-  Widget _buildTrackRow(int index, {VoidCallback? onTap}) {
+  // trailing: the playlist pages' add/remove/drag buttons.
+  Widget _buildTrackRow(int index, {VoidCallback? onTap, Widget? trailing}) {
     final song = _catalog[index];
     final isCurrent = _currentSongIndex == index;
     return ListTile(
@@ -793,6 +866,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
       ),
+      trailing: trailing,
       onTap: onTap ?? () => _playSpecificSong(index),
     );
   }
@@ -1060,7 +1134,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                 child: Text(
-                  'Reshuffles after this song',
+                  _inOrder
+                      ? 'Starts over after this song'
+                      : 'Reshuffles after this song',
                   style: TextStyle(color: Colors.grey.shade500),
                 ),
               ),

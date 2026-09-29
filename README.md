@@ -7,7 +7,7 @@
 **A background music player for VSPO! songs on Android.**<br>
 Every VSPO! member song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.18-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.19-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -22,9 +22,10 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
 - **Now Playing screen** with a big seek bar and an **Up Next** queue. Tap any upcoming song to jump to it.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
+- **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, then shuffle or play in order.
 - **Lock-screen and notification controls**: Previous, Play/Pause, Next, plus song artwork and a draggable progress bar. Bluetooth, wired headphone and car buttons work too.
 - **Even volume**: quiet and loud uploads play at about the same level, even if you open the app with no signal.
-- **Always-fresh song list**: new songs appear automatically every day, no app update needed.
+- **Always-fresh song list**: new songs appear as soon as the song list is refreshed, no app update needed.
 - **Updates inside the app**: when a new version is out, the app shows what's new and installs it for you.
 - No account, no ads, no server. It's free to run.
 
@@ -111,6 +112,7 @@ VspoM/
   app/                     # Flutter project
     lib/main.dart          # main screen + playback sequencing
     lib/catalog.dart       # Song model + loading the song list
+    lib/playlists.dart     # Playlists tab + playlist pages
     lib/widgets.dart       # thumbnails + Artists order
     lib/update_dialog.dart # in-app update check + dialog
     whats-new.txt          # notes shown in the in-app update popup
