@@ -104,7 +104,17 @@ async function runOnePass(browser, tracks) {
     // (analytics/live-stream polling, etc.). Waiting for the DOM plus the
     // first track card to appear is a more reliable signal here.
     await page.goto(MUSIC_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForSelector('article', { timeout: 30000 });
+    try {
+      await page.waitForSelector('article', { timeout: 30000 });
+    } catch (err) {
+      // Log what we got instead of track cards (bot challenge? blank page?)
+      // and save a screenshot — the workflow uploads it as a run artifact.
+      const text = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+      console.error(`No track cards. url=${page.url()} title=${await page.title().catch(() => '?')}`);
+      console.error(`Page text: ${text.slice(0, 500)}`);
+      await page.screenshot({ path: 'debug-screenshot.png', fullPage: true }).catch(() => {});
+      throw err;
+    }
 
     let stall = 0;
     let passAdded = 0;
@@ -318,7 +328,18 @@ async function main() {
   }
 
   console.log(`Launching headless browser -> ${MUSIC_URL} (${PASS_COUNT} passes)`);
-  const browser = await chromium.launch();
+  const browserApp = await chromium.launch();
+  // Look like a normal desktop Chrome, not "HeadlessChrome" — sites commonly
+  // serve bot challenges to the headless UA from data-centre IPs (GitHub).
+  // A context has the same newPage()/close() as a browser, so every
+  // downstream `browser.newPage()` picks these settings up.
+  const browser = await browserApp.newContext({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+    locale: 'zh-TW',
+    viewport: { width: 1366, height: 900 },
+  });
 
   try {
     for (let pass = 1; pass <= PASS_COUNT; pass++) {
@@ -332,7 +353,7 @@ async function main() {
       await fillArtistAvatars(browser, tracks);
     }
   } finally {
-    await browser.close();
+    await browserApp.close();
   }
 
   // After the browser is closed — this pass is plain HTTP, it doesn't need
