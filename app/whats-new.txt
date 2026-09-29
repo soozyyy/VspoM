@@ -1,2 +1,3 @@
-New: Playlists! Use the new Playlists tab at the bottom to make your own playlists.
-Add songs one by one or a whole channel at once, drag to reorder, then shuffle or play in order.
+New: a Queue button at the bottom opens Now Playing. It shows what plays next, even after the queue loops.
+Tap the x next to an upcoming song to take it out of the queue. You can now search inside a playlist.
+Swiping the app away from recent apps now stops the music.
