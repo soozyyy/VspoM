@@ -1,5 +1,6 @@
-// Scraper for vspodex.app's /music page — designed to run both by hand and
-// on a schedule via GitHub Actions (see .github/workflows/refresh-catalog.yml).
+// Scraper for vspodex.app's /music page. Run it by hand on a home PC, then
+// commit + push catalog.json. It can't run on GitHub Actions any more:
+// since 2026-09-28 vspodex.app's Cloudflare check blocks cloud servers.
 //
 // vspodex.app has no public JSON API (confirmed: it's a Next.js Server Actions
 // app, not a REST endpoint — and robots.txt explicitly disallows /api anyway),
@@ -57,8 +58,8 @@ const STALL_LIMIT = 12; // stop a pass after this many consecutive scrolls with 
 const SCROLL_WAIT_MS = 600;
 // How many fresh-page-load passes to do in one invocation. Each pass gets
 // its own random sample; more passes = better coverage but more runtime.
-// Override with PASS_COUNT=N in the environment (used by the scheduled
-// GitHub Actions run to do a thorough sweep unattended).
+// Override with PASS_COUNT=N in the environment for a more thorough sweep
+// (e.g. PowerShell: $env:PASS_COUNT=20; npm run scrape).
 const PASS_COUNT = Number(process.env.PASS_COUNT) || 10;
 const ARTIST_URL = (slug) => `https://www.vspodex.app/zh-Hant/music/artist/${slug}`;
 const AVATAR_TIMEOUT_MS = 15000;
@@ -108,7 +109,7 @@ async function runOnePass(browser, tracks) {
       await page.waitForSelector('article', { timeout: 30000 });
     } catch (err) {
       // Log what we got instead of track cards (bot challenge? blank page?)
-      // and save a screenshot — the workflow uploads it as a run artifact.
+      // and save debug-screenshot.png next to this script.
       const text = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
       console.error(`No track cards. url=${page.url()} title=${await page.title().catch(() => '?')}`);
       console.error(`Page text: ${text.slice(0, 500)}`);
@@ -218,7 +219,7 @@ async function fillArtistAvatars(browser, tracks) {
 // Mutates `tracks` in place.
 //
 // Deliberately INCREMENTAL: songs already carrying a value are skipped
-// entirely, so the first run does ~345 requests and every nightly run after
+// entirely, so the first run does ~345 requests and every run after
 // it does only as many as there are new songs — usually zero. A song's
 // loudness never changes unless the uploader replaces the video, so there's
 // nothing to refresh.
@@ -262,7 +263,7 @@ async function fillLoudness(tracks) {
 }
 
 // Reports how the freshly-scraped catalog lines up against the player's
-// normalization target, so a problem shows up in the nightly run rather than
+// normalization target, so a problem shows up in the scrape output rather than
 // months later on someone's phone.
 //
 // Two things are worth knowing about a new song:
@@ -328,18 +329,7 @@ async function main() {
   }
 
   console.log(`Launching headless browser -> ${MUSIC_URL} (${PASS_COUNT} passes)`);
-  const browserApp = await chromium.launch();
-  // Look like a normal desktop Chrome, not "HeadlessChrome" — sites commonly
-  // serve bot challenges to the headless UA from data-centre IPs (GitHub).
-  // A context has the same newPage()/close() as a browser, so every
-  // downstream `browser.newPage()` picks these settings up.
-  const browser = await browserApp.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-    locale: 'zh-TW',
-    viewport: { width: 1366, height: 900 },
-  });
+  const browser = await chromium.launch();
 
   try {
     for (let pass = 1; pass <= PASS_COUNT; pass++) {
@@ -353,7 +343,7 @@ async function main() {
       await fillArtistAvatars(browser, tracks);
     }
   } finally {
-    await browserApp.close();
+    await browser.close();
   }
 
   // After the browser is closed — this pass is plain HTTP, it doesn't need

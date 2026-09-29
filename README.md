@@ -7,7 +7,7 @@
 **A background music player for VSPO! songs on Android.**<br>
 Every VSPO! member song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.17-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.18-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -49,7 +49,7 @@ Pause, then swipe the notification away.
 It's a personal project, shared as-is for anyone who wants to sideload it.
 
 **Where do the songs come from?**
-The song list comes from [vspodex.app](https://www.vspodex.app)'s music page. It's refreshed daily, and the audio streams from the original YouTube uploads.
+The song list comes from [vspodex.app](https://www.vspodex.app)'s music page. It's refreshed whenever the maintainer runs the scraper, and the audio streams from the original YouTube uploads.
 
 ---
 
@@ -59,22 +59,25 @@ The song list comes from [vspodex.app](https://www.vspodex.app)'s music page. It
 
 `OverlayService.kt` is a foreground service that attaches a plain `WebView` straight to the `WindowManager` as an invisible 1×1 `TYPE_APPLICATION_OVERLAY` window. That window isn't tied to the app's Activity, so backgrounding the app or turning off the screen never tears down its video surface, and the audio keeps going. Flutter drives it over one `MethodChannel` (`vspo_music/overlay`: `playVideo`, `pause`, `resume`, `seek`, `getPosition`, `stop`, and more). One `EventChannel` (`vspo_music/overlay_events`) carries lock-screen and hardware skip presses back up to Dart, which owns the shuffle order. A `MediaSessionCompat` powers the lock-screen and notification controls. There's no `just_audio`, `audio_service` or `youtube_explode_dart`.
 
-**Volume leveling:** each song's `loudnessDb` (read from YouTube's own watch page by the scraper) is stored in the catalog. The injected script turns loud songs down with `video.volume`, and only boosts the rare quiet song through Web Audio. The level is decided once when a song starts and held there: a `volumechange` listener puts it straight back if YouTube moves it. If the catalog has no value for a song, the script reads the same `loudnessDb` from the YouTube page itself. `catalog-scraper/loudness.test.js` guards all of this; the APK build runs it strictly, the nightly scrape only as warnings, so it can never stop new songs from arriving.
+**Volume leveling:** each song's `loudnessDb` (read from YouTube's own watch page by the scraper) is stored in the catalog. The injected script turns loud songs down with `video.volume`, and only boosts the rare quiet song through Web Audio. The level is decided once when a song starts and held there: a `volumechange` listener puts it straight back if YouTube moves it. If the catalog has no value for a song, the script reads the same `loudnessDb` from the YouTube page itself. `catalog-scraper/loudness.test.js` guards all of this; the APK build runs it strictly, the scraper only as warnings, so it can never stop new songs from arriving.
 
 ### How the song list stays current
 
-vspodex.app has no public API, and `/music` returns a random ~60–80 song sample per page load. So `catalog-scraper/scrape.js` (Playwright) loads it many times and merges the results by video ID into `catalog.json`. `.github/workflows/refresh-catalog.yml` runs this daily on GitHub's servers and commits the result. The app fetches `catalog.json` from `raw.githubusercontent.com` on every launch, so a new song needs no rebuild. If that fetch fails, it uses the last list it downloaded, then the copy bundled in the APK (refreshed from `catalog.json` on every build).
+vspodex.app has no public API, and `/music` returns a random ~60–80 song sample per page load. So `catalog-scraper/scrape.js` (Playwright) loads it many times and merges the results by video ID into `catalog.json`. It runs by hand on a home PC and the result is committed: since September 2026 vspodex.app's Cloudflare check blocks cloud servers, so it can't run on GitHub Actions. The app fetches `catalog.json` from `raw.githubusercontent.com` on every launch, so a new song needs no rebuild. If that fetch fails, it uses the last list it downloaded, then the copy bundled in the APK (refreshed from `catalog.json` on every build).
 
-Run a scrape locally:
+Refresh the catalog (PowerShell):
 
 ```
 cd catalog-scraper
 npm install
 npx playwright install chromium   # first time only
-npm run scrape                    # or: PASS_COUNT=20 npm run scrape
+$env:PASS_COUNT=20; npm run scrape
+git add catalog.json
+git commit -m "Refresh catalog"
+git push
 ```
 
-A local scrape only reaches the app once it's pushed.
+The app picks up the pushed `catalog.json` on its next launch, no rebuild needed. If a scrape prints "No track cards", it saves `debug-screenshot.png` showing what the page served instead.
 
 ### Build from source
 
@@ -100,14 +103,16 @@ Every push to `main` that touches `app/` runs `.github/workflows/build-apk.yml`.
 VspoM/
   .github/workflows/
     build-apk.yml          # build, sign, release, version.json
-    refresh-catalog.yml    # daily catalog scrape
   catalog-scraper/
     scrape.js              # vspodex.app scraper (Playwright)
     loudness.js            # loudness extraction + shared player constants
-    loudness.test.js       # volume-leveling checks (npm test = nightly, npm run test:app = APK build)
+    loudness.test.js       # volume-leveling checks (npm test = scraper checks, npm run test:app = APK build)
     catalog.json           # the song list the app fetches
   app/                     # Flutter project
-    lib/main.dart          # all UI + playback sequencing
+    lib/main.dart          # main screen + playback sequencing
+    lib/catalog.dart       # Song model + loading the song list
+    lib/widgets.dart       # thumbnails + Artists order
+    lib/update_dialog.dart # in-app update check + dialog
     whats-new.txt          # notes shown in the in-app update popup
     android/app/src/main/kotlin/
       MainActivity.kt      # channel handlers, version check, APK install

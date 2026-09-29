@@ -1,3 +1,2 @@
-Improved: volume leveling now keeps working when you open the app with no or slow signal, and brand-new songs are leveled right away.
-Improved: the volume holds steadier at the start of a song.
-Removed: the "Allow notifications" banner. The playback controls work without that permission.
+Updated: the built-in song list (used when the app opens with no signal) now has 347 songs.
+Behind the scenes: code cleanup, no visible changes.
