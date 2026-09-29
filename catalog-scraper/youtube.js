@@ -1,9 +1,10 @@
 // Builds the song catalog straight from YouTube, replacing the vspodex.app
 // scrape (Cloudflare now blocks it from GitHub's servers).
 //
-//   members: Holodex  GET /api/v2/channels?org=VSpo   (JP + EN, new debuts
-//            appear automatically) + any channel already in catalog.json
-//            (e.g. the official ぶいすぽっ！ channel)
+//   members: Holodex  GET /api/v2/channels?org=VSpo   (JP + EN + the official
+//            channels; new debuts appear automatically). catalog.json is only
+//            used to look up vspodex slugs — its other channels (collab hosts,
+//            Topic channels) are never scanned.
 //   songs:   YouTube Data API v3 — every upload of every member, then the
 //            rules in classify() decide what counts as a song
 //
@@ -17,15 +18,17 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const YT = 'https://www.googleapis.com/youtube/v3';
+const OTHER_CHANNEL = 'on a non-VSPO channel (kept, not scanned)';
 const MIN_SECONDS = 60; // Shorts / teasers below this
 const MAX_SECONDS = 600; // streams, medleys-as-streams, vlogs above this
 
 // A title (or category Music) must look like a song...
 const SONG_RE =
-  /歌ってみた|歌わせて|オリジナル曲|オリジナルソング|original\s*song|\bcover(ed)?\b|\bMV\b|music\s*video|official\s*audio|feat\.|ft\./i;
+  /歌ってみた|うたってみた|歌わせて|オリジナル曲|オリジナルソング|original\s*song|\bcover(ed)?\b|\bMV\b|music\s*video|official\s*audio|DIAMONDintheROUGH|3D\s*LIVE/i;
 // ...and must not look like one of these music-adjacent non-songs.
+// (No 切り抜き/配信: 3D-debut song clips are songs; long streams fail on length.)
 const NOT_SONG_RE =
-  /歌枠|karaoke|カラオケ|切り抜き|\bclip\b|#shorts|\bshorts\b|クロスフェード|\bxfd\b|crossfade|teaser|trailer|ティザー|ダイジェスト|digest|告知|予告|配信|雑談/i;
+  /歌枠|karaoke|カラオケ|#shorts|\bshorts\b|クロスフェード|\bxfd\b|crossfade|teaser|trailer|ティザー|ダイジェスト|digest|告知|予告|雑談/i;
 
 // ---------- pure helpers (tested in youtube.test.js) ----------
 
@@ -167,12 +170,11 @@ async function main() {
     if (ch && t.artistSlug && !slugOfChannel.has(ch)) slugOfChannel.set(ch, t.artistSlug);
   }
 
-  // 2. Members = Holodex VSpo channels + any channel already in the catalog.
+  // 2. Members = Holodex VSpo channels only.
   const holo = await holodexChannels();
   console.log(`Holodex: ${holo.length} VSpo channels`);
   const holoById = new Map(holo.map((c) => [c.id, c]));
-  const channelIds = [...new Set([...holo.map((c) => c.id), ...slugOfChannel.keys()])];
-  const channels = await channelsById(channelIds);
+  const channels = await channelsById(holo.map((c) => c.id));
 
   const members = channels.map((c) => {
     const h = holoById.get(c.id);
@@ -228,10 +230,13 @@ async function main() {
     .map((t) => {
       const r = verdicts.get(t.videoId);
       let why = r?.reason;
-      if (!r) why = channelOfVideo.has(t.videoId) ? 'not in a scanned channel / page limit' : 'video gone';
+      const ch = channelOfVideo.get(t.videoId);
+      if (!r) why = !ch ? 'video gone' : holoById.has(ch) ? 'beyond MAX_PAGES' : OTHER_CHANNEL;
       return { ...t, why, raw: r?.video.snippet.title ?? '', secs: parseDuration(r?.video.contentDetails.duration) };
     });
   const found = existing.length - missed.length;
+  const onOther = missed.filter((m) => m.why === OTHER_CHANNEL).length;
+  const vspoTotal = existing.length - onOther;
 
   writeFileSync('catalog.candidate.json', JSON.stringify(candidate, null, 2));
   writeFileSync(
@@ -245,7 +250,8 @@ async function main() {
   const report = [
     '# YouTube catalog test report',
     '',
-    `- Recall: **${found} / ${existing.length}** current songs found (${((found / existing.length) * 100).toFixed(1)}%)`,
+    `- Recall on VSPO channels: **${found} / ${vspoTotal}** (${((found / vspoTotal) * 100).toFixed(1)}%)`,
+    `- Current songs on non-VSPO channels (kept as-is, not scanned): ${onOther}`,
     `- New songs found: **${added.length}**`,
     `- Candidate total: ${candidate.length}`,
     `- YouTube quota used: ~${quota} units (of 10,000/day)`,
@@ -271,7 +277,7 @@ async function main() {
     '',
   ].join('\n');
   writeFileSync('report.md', report);
-  console.log(`\nRecall ${found}/${existing.length}, ${added.length} new, quota ~${quota}. See report.md.`);
+  console.log(`\nRecall ${found}/${vspoTotal} on VSPO channels, ${added.length} new, quota ~${quota}. See report.md.`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
