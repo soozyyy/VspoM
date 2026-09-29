@@ -1,2 +1,2 @@
-Updated: the built-in song list (used when the app opens with no signal) now has 347 songs.
-Behind the scenes: code cleanup, no visible changes.
+New: Playlists! Use the new Playlists tab at the bottom to make your own playlists.
+Add songs one by one or a whole channel at once, drag to reorder, then shuffle or play in order.
