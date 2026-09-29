@@ -25,12 +25,12 @@ part 'widgets.dart';
 //   update_dialog.dart  in-app update check + "Update available" dialog
 // Imports live here only; part files can't have their own.
 //
-// The footer has two tabs, Library (this screen's song list) and Playlists
-// (playlists.dart), with a Queue button between them that opens the Now
-// Playing / Up Next page. Playlists are the only curation: songs are added from
-// the Playlists pages, and there's deliberately no favourite/like button on
-// songs anywhere else. (Until v1.0.19 there were no playlists and no footer
-// by design; the user changed that on 2026-09-28.)
+// The footer has three tabs: Library (this screen's song list), Queue (the
+// Now Playing / Up Next page) and Playlists (playlists.dart). Playlists are
+// the only curation: songs are added from the Playlists pages, and there's
+// deliberately no favourite/like button on songs anywhere else. (Until
+// v1.0.19 there were no playlists and no footer by design; the user changed
+// that on 2026-09-28.)
 // ---------------------------------------------------------------------------
 
 void main() {
@@ -90,8 +90,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   bool _isPaused = false;
 
   // Playlists (playlists.dart). _tab is the footer tab: 0 Library,
-  // 1 Playlists. _inOrder means _playOrder is a playlist played in order,
-  // so running off the end restarts it instead of reshuffling.
+  // 1 Queue (Now Playing), 2 Playlists. _inOrder means _playOrder is a
+  // playlist played in order, so running off the end restarts it instead of
+  // reshuffling.
   List<Playlist> _playlists = [];
   bool _playlistsLoaded = false;
   int _tab = 0;
@@ -344,13 +345,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       ..shuffle();
   }
 
-  // Makes the previewed loop the current one and plays position k of it.
-  Future<void> _startNextLoop(int k) {
-    _playOrder = _nextLoop;
-    _nextOrder = null;
-    return _playSongAt(k);
-  }
-
   Future<void> _playSongAt(int orderIndex) async {
     if (_playOrder.isEmpty) return;
     if (orderIndex < 0) return;
@@ -499,15 +493,15 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
     final visibleIndices = _visibleIndices;
 
-    // Back on the Playlists tab goes to Library first, then exits.
+    // Back on the Queue or Playlists tab goes to Library first, then exits.
     return PopScope(
       canPop: _tab == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) setState(() => _tab = 0);
       },
       child: Scaffold(
-        // IndexedStack keeps the Library tab (scroll, search) alive while the
-        // Playlists tab is showing.
+        // IndexedStack keeps the Library tab (scroll, search) alive while
+        // another tab is showing.
         body: IndexedStack(
           index: _tab,
           children: [
@@ -540,13 +534,20 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 ],
               ),
             ),
+            // Only built while showing: IndexedStack builds every child, and
+            // this one would otherwise rebuild its rows on every 500 ms poll
+            // in the background. (Queue is disabled until something plays.)
+            _tab == 1 && currentSong != null
+                ? _buildNowPlaying()
+                : const SizedBox.shrink(),
             SafeArea(child: _buildPlaylistsTab()),
           ],
         ),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (currentSong != null)
+            // Not on Queue: that page already has the full controls.
+            if (currentSong != null && _tab != 1)
               // The footer below handles the bottom system inset, so the
               // mini-player mustn't add it too.
               MediaQuery.removePadding(
@@ -554,49 +555,35 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 removeBottom: true,
                 child: _buildMiniPlayer(currentSong),
               ),
-            _buildFooter(context, _tab == 0 ? 0 : 2),
+            NavigationBar(
+              height: 64,
+              selectedIndex: _tab,
+              onDestinationSelected: (i) {
+                _searchFocusNode.unfocus();
+                setState(() => _tab = i);
+              },
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.library_music_outlined),
+                  selectedIcon: Icon(Icons.library_music),
+                  label: 'Library',
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.playlist_play),
+                  label: 'Queue',
+                  // Now Playing needs a current song.
+                  enabled: currentSong != null,
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.queue_music_outlined),
+                  selectedIcon: Icon(Icons.queue_music),
+                  label: 'Playlists',
+                ),
+              ],
+            ),
           ],
         ),
       ),
-    );
-  }
-
-  // Footer is Library · Queue · Playlists, but Queue isn't a tab: it opens
-  // the Now Playing page on top, so the IndexedStack only has 0 Library and
-  // 1 Playlists. Shown on the main screen and on Now Playing (selected: 1),
-  // where Library/Playlists close any pushed pages and switch tab.
-  Widget _buildFooter(BuildContext ctx, int selected) {
-    return NavigationBar(
-      height: 64,
-      selectedIndex: selected,
-      onDestinationSelected: (i) {
-        if (i == selected) return;
-        _searchFocusNode.unfocus();
-        if (i == 1) {
-          _openNowPlaying();
-        } else {
-          Navigator.of(ctx).popUntil((r) => r.isFirst);
-          setState(() => _tab = i == 0 ? 0 : 1);
-        }
-      },
-      destinations: [
-        const NavigationDestination(
-          icon: Icon(Icons.library_music_outlined),
-          selectedIcon: Icon(Icons.library_music),
-          label: 'Library',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.playlist_play),
-          label: 'Queue',
-          // Now Playing needs a current song.
-          enabled: _currentSong != null,
-        ),
-        const NavigationDestination(
-          icon: Icon(Icons.queue_music_outlined),
-          selectedIcon: Icon(Icons.queue_music),
-          label: 'Playlists',
-        ),
-      ],
     );
   }
 
@@ -871,9 +858,16 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   // onTap defaults to "start a new shuffle from this song" (library list);
   // the Up Next list passes its own to jump within the current order.
   // trailing: the playlist pages' add/remove/drag buttons.
-  Widget _buildTrackRow(int index, {VoidCallback? onTap, Widget? trailing}) {
+  // highlight: purple title if this is the playing song. Off on Now Playing,
+  // where the same song can reappear in the next-loop preview.
+  // tappable: off for the next-loop preview, which is view-only.
+  Widget _buildTrackRow(int index,
+      {VoidCallback? onTap,
+      Widget? trailing,
+      bool highlight = true,
+      bool tappable = true}) {
     final song = _catalog[index];
-    final isCurrent = _currentSongIndex == index;
+    final isCurrent = highlight && _currentSongIndex == index;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       // 16:9 to match the actual video thumbnail's shape — a square here
@@ -910,7 +904,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
       ),
       trailing: trailing,
-      onTap: onTap ?? () => _playSpecificSong(index),
+      onTap: tappable ? onTap ?? () => _playSpecificSong(index) : null,
     );
   }
 
@@ -1057,7 +1051,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     ));
   }
 
-  void _openNowPlaying() => _pushLive(_buildNowPlaying);
+  // Now Playing is the Queue tab. From an artist/playlist page (mini-player
+  // tap) this closes those pages first.
+  void _openNowPlaying() {
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    setState(() => _tab = 1);
+  }
+
   void _openArtists() => _pushLive(_buildArtists);
 
   // Full-screen view of the same playback state the mini-player shows, plus
@@ -1067,7 +1067,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   // doesn't build a 650-row list.
   static const _maxQueueRows = 50;
 
-  Widget _buildNowPlaying(BuildContext routeContext) {
+  Widget _buildNowPlaying() {
     final song = _catalog[_currentSongIndex!];
     final upNextStart = _playOrderIndex + 1;
     final upNext = _playOrder.sublist(upNextStart);
@@ -1082,7 +1082,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        // No back/down arrow: the footer and the system back close it.
+        // It's a tab now, so no back/down arrow.
         automaticallyImplyLeading: false,
         title: const Text('Now Playing', style: TextStyle(fontSize: 15)),
         centerTitle: true,
@@ -1188,6 +1188,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
               // through them rather than to the song you left.
               (context, i) => _buildTrackRow(
                 upNext[i],
+                highlight: false,
                 onTap: () => _playSongAt(upNextStart + i),
                 // Drops it from this pass only: the next reshuffle pulls
                 // from the full scope again.
@@ -1221,13 +1222,19 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                 ),
               ),
             ),
-            // Preview only: no remove button (in order, this list is the
-            // playlist itself, including songs already played).
+            // View-only until that loop actually starts: no tap, no remove
+            // (in order, this list is the playlist itself, including songs
+            // already played).
             SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, i) => _buildTrackRow(
-                  loop[i],
-                  onTap: () => _startNextLoop(i),
+                // Dimmed so it reads as "not yet", not as a tappable list.
+                (context, i) => Opacity(
+                  opacity: 0.5,
+                  child: _buildTrackRow(
+                    loop[i],
+                    highlight: false,
+                    tappable: false,
+                  ),
                 ),
                 childCount: loopRows,
                 addAutomaticKeepAlives: false,
@@ -1247,7 +1254,6 @@ class _PlaylistScreenState extends State<PlaylistScreen>
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
-      bottomNavigationBar: _buildFooter(routeContext, 1),
     );
   }
 

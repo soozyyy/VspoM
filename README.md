@@ -20,7 +20,7 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 - **Background playback.** Keeps playing with the screen off or while you use other apps.
 - **Shuffle everything**, or just one artist, or just your search results. It loops forever.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
-- **Now Playing screen** with a big seek bar and an **Up Next** queue, one tap away from the **Queue** button at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
+- **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
 - **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
 - **Lock-screen and notification controls**: Previous, Play/Pause, Next, plus song artwork and a draggable progress bar. Bluetooth, wired headphone and car buttons work too.
