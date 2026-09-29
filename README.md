@@ -7,7 +7,7 @@
 **A background music player for VSPO! songs on Android.**<br>
 Every VSPO! member song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.19-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.20-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -20,9 +20,9 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 - **Background playback.** Keeps playing with the screen off or while you use other apps.
 - **Shuffle everything**, or just one artist, or just your search results. It loops forever.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
-- **Now Playing screen** with a big seek bar and an **Up Next** queue. Tap any upcoming song to jump to it.
+- **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
-- **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, then shuffle or play in order.
+- **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
 - **Lock-screen and notification controls**: Previous, Play/Pause, Next, plus song artwork and a draggable progress bar. Bluetooth, wired headphone and car buttons work too.
 - **Even volume**: quiet and loud uploads play at about the same level, even if you open the app with no signal.
 - **Always-fresh song list**: new songs appear as soon as the song list is refreshed, no app update needed.
@@ -44,7 +44,7 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 The music plays through YouTube in a tiny invisible window. Android shuts down video playback in normal app screens when you leave them, but not in an overlay window. Nothing is ever drawn on your screen.
 
 **How do I stop playback completely?**
-Pause, then swipe the notification away.
+Swipe VspoM away from your recent apps, or pause and swipe the notification away.
 
 **Why isn't it on the Play Store?**
 It's a personal project, shared as-is for anyone who wants to sideload it.

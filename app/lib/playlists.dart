@@ -122,7 +122,20 @@ extension _Playlists on _PlaylistScreenState {
     _openPlaylist(p);
   }
 
-  void _openPlaylist(Playlist p) => _pushLive((c) => _buildPlaylist(c, p));
+  void _openPlaylist(Playlist p) {
+    // The page's search text. Lives across rebuilds, starts empty on each open.
+    var query = '';
+    _pushLive(
+      (c) => StatefulBuilder(
+        builder: (c, setLocal) => _buildPlaylist(
+          c,
+          p,
+          query,
+          (v) => setLocal(() => query = v),
+        ),
+      ),
+    );
+  }
 
   // ---- Playlists tab (footer) ----
 
@@ -204,8 +217,15 @@ extension _Playlists on _PlaylistScreenState {
 
   // ---- One playlist ----
 
-  Widget _buildPlaylist(BuildContext routeContext, Playlist p) {
+  Widget _buildPlaylist(BuildContext routeContext, Playlist p, String query,
+      ValueChanged<String> onSearch) {
     final indices = _playlistIndices(p);
+    // Positions in `indices` that match the search, so a tap still plays the
+    // whole playlist from the right spot.
+    final visible = [
+      for (var k = 0; k < indices.length; k++)
+        if (query.isEmpty || _catalog[indices[k]].matchesSearch(query)) k,
+    ];
     final song = _currentSong;
     return Scaffold(
       appBar: AppBar(
@@ -254,8 +274,8 @@ extension _Playlists on _PlaylistScreenState {
         // would fight with tap-to-play.
         buildDefaultDragHandles: false,
         padding: const EdgeInsets.only(bottom: 24),
-        header: _buildPlaylistHeader(p, indices),
-        itemCount: indices.length,
+        header: _buildPlaylistHeader(p, indices, onSearch),
+        itemCount: visible.length,
         onReorder: (from, to) {
           if (to > from) to -= 1;
           final order = List.of(indices);
@@ -270,11 +290,11 @@ extension _Playlists on _PlaylistScreenState {
           });
         },
         itemBuilder: (context, i) => KeyedSubtree(
-          key: ValueKey(_catalog[indices[i]].videoId),
+          key: ValueKey(_catalog[indices[visible[i]]].videoId),
           child: _buildTrackRow(
-            indices[i],
+            indices[visible[i]],
             // Tap = play this playlist in order from here.
-            onTap: () => _playInOrder(indices, i),
+            onTap: () => _playInOrder(indices, visible[i]),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -282,16 +302,21 @@ extension _Playlists on _PlaylistScreenState {
                   icon: Icon(Icons.close, color: Colors.grey.shade500),
                   tooltip: 'Remove',
                   onPressed: () => _editPlaylists(
-                    () => p.videoIds.remove(_catalog[indices[i]].videoId),
+                    () => p.videoIds
+                        .remove(_catalog[indices[visible[i]]].videoId),
                   ),
                 ),
-                ReorderableDragStartListener(
-                  index: i,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Icon(Icons.drag_handle, color: Colors.grey.shade500),
+                // No reordering while searching: moving a song among only
+                // some of the songs has no clear meaning.
+                if (query.isEmpty)
+                  ReorderableDragStartListener(
+                    index: i,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child:
+                          Icon(Icons.drag_handle, color: Colors.grey.shade500),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -301,7 +326,8 @@ extension _Playlists on _PlaylistScreenState {
     );
   }
 
-  Widget _buildPlaylistHeader(Playlist p, List<int> indices) {
+  Widget _buildPlaylistHeader(
+      Playlist p, List<int> indices, ValueChanged<String> onSearch) {
     final empty = indices.isEmpty;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -359,6 +385,26 @@ extension _Playlists on _PlaylistScreenState {
               ),
             ],
           ),
+          if (!empty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: TextField(
+                onChanged: onSearch,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Search this playlist…',
+                  hintStyle: TextStyle(color: Colors.grey.shade500),
+                  prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
+                  filled: true,
+                  fillColor: const Color(0xFF1E1E1E),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
           if (empty)
             Padding(
               padding: const EdgeInsets.only(top: 24),

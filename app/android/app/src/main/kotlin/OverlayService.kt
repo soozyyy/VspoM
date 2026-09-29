@@ -187,6 +187,14 @@ class OverlayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // Swiping VspoM out of recents closes the app, so stop playing too.
+    // Without this the service outlived the task: the current song played
+    // to the end, then the skip to the next one had no Dart to answer it.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopEverything()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
@@ -426,7 +434,8 @@ class OverlayService : Service() {
     }
 
     /** Full teardown — the old Stop button's behaviour, now also reached by
-     *  swiping the paused notification away and by MediaSession's onStop(). */
+     *  swiping the paused notification away, by MediaSession's onStop(), and
+     *  by swiping the app out of recents (onTaskRemoved). */
     private fun stopEverything() {
         removeOverlay()
         stopForeground(STOP_FOREGROUND_REMOVE)
