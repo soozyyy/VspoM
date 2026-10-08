@@ -231,7 +231,8 @@
     "artistSlug": "riko-solari",
     "thumbnail": "https://i.ytimg.com/vi/9SZWJNEVUFs/maxresdefault.jpg",
     "artistAvatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/fd64c44e-7a5f-4083-b58b-8c3a81bb0715-profile_image-150x150.png",
-    "loudnessDb": 4.97
+    "loudnessDb": 4.97,
+    "addedAt": "2026-09-18"
   },
   {
     "videoId": "I1pYddBpd-s",
@@ -1572,7 +1573,8 @@
     "artistSlug": "asumi-sena",
     "thumbnail": "https://i.ytimg.com/vi/Z07wK_HfAyA/maxresdefault.jpg",
     "artistAvatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/bb25e9c0-e515-4d08-a719-fab528efac57-profile_image-150x150.png",
-    "loudnessDb": 4.55
+    "loudnessDb": 4.55,
+    "addedAt": "2026-09-29"
   },
   {
     "videoId": "QcRtMGfgF1s",
@@ -1752,7 +1754,8 @@
     "artistSlug": "asumi-sena",
     "thumbnail": "https://i.ytimg.com/vi/KqEu9ALMGjA/maxresdefault.jpg",
     "artistAvatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/bb25e9c0-e515-4d08-a719-fab528efac57-profile_image-150x150.png",
-    "loudnessDb": 6.66
+    "loudnessDb": 6.66,
+    "addedAt": "2026-09-29"
   },
   {
     "videoId": "8frSzuH_Tbc",
@@ -1923,7 +1926,8 @@
     "artistSlug": "shinomiya-runa",
     "thumbnail": "https://i.ytimg.com/vi/CaYcxKktAuk/maxresdefault.jpg",
     "artistAvatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/512b8442-9e10-4b8d-8cd0-45020a098d13-profile_image-150x150.png",
-    "loudnessDb": 6.44
+    "loudnessDb": 6.44,
+    "addedAt": "2026-09-29"
   },
   {
     "videoId": "w72-tPc8s0o",
@@ -3122,4 +3126,4 @@
     "artistAvatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/e5620a85-bede-40f4-8d6b-8892ad0c515a-profile_image-150x150.png",
     "loudnessDb": 7.36
   }
-]
+]

@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 
 part 'catalog.dart';
+part 'news.dart';
 part 'playlists.dart';
 part 'update_dialog.dart';
 part 'widgets.dart';
@@ -23,6 +24,7 @@ part 'widgets.dart';
 //   widgets.dart        thumbnails + the Artists debut order
 //   playlists.dart      the Playlists tab + its pages (Feature 6)
 //   update_dialog.dart  in-app update check + "Update available" dialog
+//   news.dart           side drawer, News page, "N new songs" popup
 // Imports live here only; part files can't have their own.
 //
 // The footer has three tabs: Library (this screen's song list), Queue (the
@@ -98,6 +100,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   int _tab = 0;
   bool _inOrder = false;
 
+  // News (news.dart): update history for the News page, and this build's
+  // version for the drawer header (set by _checkForUpdate).
+  List<Map<String, dynamic>> _changelog = [];
+  String? _appVersion;
+
   // The one way to change _playlists: repaints and saves to disk.
   void _editPlaylists(VoidCallback fn) {
     setState(fn);
@@ -131,12 +138,15 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     // field gains/loses focus (see _suggestions / _buildSuggestions below).
     _searchFocusNode.addListener(() => setState(() {}));
     _checkPermission();
-    _loadCatalog().then((songs) {
+    final catalogReady = _loadCatalog().then((songs) {
       if (!mounted) return;
       setState(() {
         _catalog = songs;
         _loadingCatalog = false;
       });
+    });
+    _loadChangelog().then((entries) {
+      if (mounted) setState(() => _changelog = entries);
     });
     _loadPlaylists().then((lists) {
       if (!mounted) return;
@@ -160,7 +170,10 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       const Duration(milliseconds: 500),
       (_) => _pollPosition(),
     );
-    _checkForUpdate();
+    // Update dialog first, then new songs, so the two never stack.
+    Future.wait([catalogReady, _checkForUpdate()]).then((_) {
+      if (mounted) _showNewSongs();
+    });
   }
 
   /// Once per launch: if GitHub has a newer build than this one, offer it.
@@ -170,11 +183,12 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       final mine =
           await _overlayChannel.invokeMapMethod<String, dynamic>('getAppVersion');
       final latest = await _fetchLatestVersion();
+      _appVersion = mine?['version'] as String?;
       if (mine == null || latest == null || !mounted) return;
       final myBuild = (mine['build'] as num).toInt();
       final latestBuild = (latest['build'] as num).toInt();
       if (latestBuild <= myBuild) return;
-      showDialog<void>(
+      await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _UpdateDialog(
@@ -500,6 +514,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         if (!didPop) setState(() => _tab = 0);
       },
       child: Scaffold(
+        drawer: _buildDrawer(onNews: false),
         // IndexedStack keeps the Library tab (scroll, search) alive while
         // another tab is showing.
         body: IndexedStack(
@@ -703,33 +718,48 @@ class _PlaylistScreenState extends State<PlaylistScreen>
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: (value) => setState(() => _searchQuery = value),
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: 'Search songs or artists…',
-          hintStyle: TextStyle(color: Colors.grey.shade500),
-          prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
-          suffixIcon: _searchQuery.isEmpty
-              ? null
-              : IconButton(
-                  icon: Icon(Icons.clear, color: Colors.grey.shade500),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                ),
-          filled: true,
-          fillColor: const Color(0xFF1E1E1E),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
+      padding: const EdgeInsets.fromLTRB(8, 16, 20, 4),
+      child: Row(
+        children: [
+          // Builder: Scaffold.of needs a context below the Scaffold.
+          Builder(
+            builder: (c) => IconButton(
+              icon: const Icon(Icons.menu),
+              tooltip: 'Menu',
+              onPressed: () => Scaffold.of(c).openDrawer(),
+            ),
           ),
-        ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search songs or artists…',
+                hintStyle: TextStyle(color: Colors.grey.shade500),
+                prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey.shade500),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
