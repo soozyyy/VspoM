@@ -1,0 +1,67 @@
+# Builds the PC website (website/, a Flutter web project) and publishes it
+# to GitHub Pages: https://soozyyy.github.io/VspoM/
+#
+# Only runs for pushes to main that change website/ (or this file), so
+# website changes never trigger build-apk.yml and app changes never trigger
+# this. One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push replaces a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # Keeps the offline-fallback copy of the song list fresh. Reads
+      # catalog-scraper/ only; nothing outside website/ is changed.
+      - name: Bundle the current catalog as the offline fallback
+        run: cp ../catalog-scraper/catalog.json assets/catalog.json
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check volume leveling logic
+        run: flutter test
+
+      # --base-href: Pages serves the site under /VspoM/, not the domain root.
+      - name: Build
+        run: flutter build web --release --base-href /VspoM/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -11,7 +11,7 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
-[**⬇ Download APK**](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk)
+[**⬇ Download APK**](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk) · [**🌐 Open the website**](https://soozyyy.github.io/VspoM/)
 
 </div>
 
@@ -38,6 +38,17 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 4. Tap **Shuffle Play All**.
 
 **Updating:** you don't need to come back here. When a new version is released, the app asks you on launch. Tap **Update**, then **Install**. The permissions you already granted are kept.
+
+## Website (PC)
+
+On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same song list, shuffle, search, artists, queue and playlists as the app, laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
+
+A few differences from the app:
+
+- **Playlists are saved in that browser only.** They don't sync with the app or with other browsers.
+- **No News page or update popups.** The website is always the latest version.
+- **Some songs may be skipped.** A few uploaders don't allow their videos to play on other sites. The website skips those and tells you.
+- Made for computers. On a phone, use the app: phone browsers stop the music when you lock the screen.
 
 ## FAQ
 
@@ -100,12 +111,25 @@ Every push to `main` that touches `app/` runs `.github/workflows/build-apk.yml`.
 - **News page history** is `app/assets/changelog.json` (the app reads it live from GitHub, with the bundled copy as fallback). Add an entry to it with every release: `notes` is the short summary (same text as `whats-new.txt`), `details` lists every change, one line each, and shows when you tap the card. New songs come from each song's `addedAt` date, which `scrape.js` stamps the first time it finds a song.
 - **Signing** needs two repo secrets: `VSPO_KEYSTORE_BASE64` and `VSPO_KEYSTORE_PASSWORD`. The keystore and `key.properties` are git-ignored; `android/key.properties.example` shows the format. If the keystore is ever lost, existing installs have to uninstall once, because Android treats a new signing key as a different app.
 
+### Website
+
+`website/` is a separate Flutter web project: its own copy of the app's code, changed freely without ever touching `app/`. App features are copied over by hand when they fit the website. Instead of `OverlayService.kt`, it plays songs with YouTube's IFrame Player API in an invisible player (`web/player.js`), and it keeps playlists in the browser's `localStorage`. Volume leveling uses the same catalog `loudnessDb` and the same -6 dB target, applied through the player's volume (`lib/level.dart`); songs quieter than the target can't be boosted there.
+
+Every push to `main` that touches `website/` runs `.github/workflows/deploy-website.yml`, which builds the site and publishes it to GitHub Pages. It never triggers an APK build, and app pushes never redeploy the website. The website has no version number. (One-time setup: Settings → Pages → Source: GitHub Actions.)
+
+```
+cd website
+flutter pub get
+flutter run -d chrome          # local preview
+```
+
 ### Project layout
 
 ```
 VspoM/
   .github/workflows/
     build-apk.yml          # build, sign, release, version.json
+    deploy-website.yml     # build the website, publish to GitHub Pages
   catalog-scraper/
     scrape.js              # vspodex.app scraper (Playwright)
     loudness.js            # loudness extraction + shared player constants
@@ -123,6 +147,11 @@ VspoM/
       MainActivity.kt      # channel handlers, version check, APK install
       OverlayService.kt    # playback engine + MediaSession
     assets/                # bundled catalog fallback, changelog.json (News), logo, icon
+  website/                 # Flutter web project (separate copy of the app's code)
+    lib/                   # same layout as app/lib, minus updater and News
+    lib/web_bridge.dart    # Dart side of web/player.js
+    lib/level.dart         # volume leveling through the player's volume
+    web/player.js          # YouTube IFrame player, localStorage, fetch
 ```
 
 ---
