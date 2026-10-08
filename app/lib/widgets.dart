@@ -34,7 +34,7 @@ Widget _thumbnailFallback(String url, Widget orElse) {
   return CachedNetworkImage(
     imageUrl: fallback,
     fit: BoxFit.cover,
-    errorWidget: (_, __, ___) => orElse,
+    errorWidget: (_, _, _) => orElse,
   );
 }
 
@@ -75,8 +75,8 @@ class _ThumbnailImage extends StatelessWidget {
           memCacheWidth: (width * 2).round(),
           memCacheHeight: (height * 2).round(),
           fadeInDuration: const Duration(milliseconds: 80),
-          placeholder: (_, __) => Container(color: Colors.grey.shade800),
-          errorWidget: (_, __, ___) => _thumbnailFallback(
+          placeholder: (_, _) => Container(color: Colors.grey.shade800),
+          errorWidget: (_, _, _) => _thumbnailFallback(
             url,
             Container(
               color: Colors.grey.shade800,

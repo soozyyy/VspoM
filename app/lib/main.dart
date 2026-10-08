@@ -632,11 +632,11 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                         // small on-screen image.
                         memCacheWidth: 640,
                         fadeInDuration: const Duration(milliseconds: 120),
-                        placeholder: (_, __) => _buildHeaderPlaceholder(),
+                        placeholder: (_, _) => _buildHeaderPlaceholder(),
                         // Falls back to the placeholder gradient+icon if the
                         // thumbnail fails to load (e.g. transient network
                         // hiccup), rather than showing a broken-image icon.
-                        errorWidget: (_, __, ___) =>
+                        errorWidget: (_, _, _) =>
                             _thumbnailFallback(
                           currentSong.thumbnailUrl,
                           _buildHeaderPlaceholder(),
@@ -862,7 +862,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
       margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.deepPurple.withOpacity(0.15),
+        color: Colors.deepPurple.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -1076,7 +1076,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ValueListenableBuilder<int>(
         valueListenable: _changes,
-        builder: (routeContext, _, __) => build(routeContext),
+        builder: (routeContext, _, _) => build(routeContext),
       ),
     ));
   }
@@ -1135,9 +1135,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                         fit: BoxFit.cover,
                         memCacheWidth: 1280,
                         fadeInDuration: const Duration(milliseconds: 120),
-                        placeholder: (_, __) =>
+                        placeholder: (_, _) =>
                             Container(color: Colors.grey.shade800),
-                        errorWidget: (_, __, ___) =>
+                        errorWidget: (_, _, _) =>
                             _thumbnailFallback(
                           song.thumbnailUrl,
                           _buildHeaderPlaceholder(),
