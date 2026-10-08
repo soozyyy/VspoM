@@ -108,6 +108,9 @@ flutter:
   # catalog changes, then rebuild.
   assets:
     - assets/catalog.json
+    # Update history for the News page (news.dart). Also fetched live from
+    # GitHub, so this copy only matters offline. Add an entry every release.
+    - assets/changelog.json
     - assets/branding/vspo_logo.png
 
   # An image asset can refer to one or more resolution-specific "variants", see

@@ -34,6 +34,9 @@ class Song {
   // added to the catalog since the last scrape run; the player treats that
   // as "leave the level alone".
   final double? loudnessDb;
+  // Date the scraper first found this song (YYYY-MM-DD). Null for the
+  // original catalog. Drives the News page — see news.dart.
+  final String? addedAt;
 
   const Song({
     required this.videoId,
@@ -44,6 +47,7 @@ class Song {
     this.duration,
     this.artistAvatarUrl,
     this.loudnessDb,
+    this.addedAt,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
@@ -65,6 +69,7 @@ class Song {
           : null,
       artistAvatarUrl: json['artistAvatarUrl'] as String?,
       loudnessDb: (json['loudnessDb'] as num?)?.toDouble(),
+      addedAt: json['addedAt'] as String?,
     );
   }
 
@@ -197,6 +202,10 @@ Future<List<Song>?> _loadCachedCatalog() async {
 
 // Placeholder catalog used until catalog.json has real entries — see
 // _loadCatalog() above.
+// Every mock song uses this video ID; news.dart uses it to tell mock data
+// from a real catalog.
+const _mockVideoId = 'dQw4w9WgXcQ';
+
 List<Song> _mockCatalog() {
   final titles = [
     'Kirinuki Blues', 'Neon Handshake', 'Midnight Karaoke', 'Static Bloom',
@@ -213,7 +222,7 @@ List<Song> _mockCatalog() {
     final artist = artists[i % artists.length];
     final seconds = 150 + rng.nextInt(120);
     return Song(
-      videoId: 'dQw4w9WgXcQ',
+      videoId: _mockVideoId,
       title: title,
       artist: artist,
       thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',

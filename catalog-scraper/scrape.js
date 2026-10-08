@@ -34,6 +34,10 @@
 // on Twitch show a Twitch avatar there instead — either way it's their real
 // pfp, not a video thumbnail. Set SKIP_AVATARS=1 to skip this phase.
 //
+// Every song not already in catalog.json gets "addedAt" (today, local date,
+// YYYY-MM-DD). The app's News page and "N new songs" popup read it. The 343
+// songs of the original catalog have none, so they never show as new.
+//
 // Output: catalog.json in this folder, e.g.:
 // [
 //   {
@@ -69,6 +73,8 @@ const SKIP_AVATARS = process.env.SKIP_AVATARS === '1';
 // Set SKIP_LOUDNESS=1 to skip the per-song loudness pass (see fillLoudness()
 // below), same idea as SKIP_AVATARS.
 const SKIP_LOUDNESS = process.env.SKIP_LOUDNESS === '1';
+// Stamped as addedAt on songs this run finds for the first time.
+const TODAY = new Date().toLocaleDateString('sv'); // 'sv' formats as YYYY-MM-DD
 // How many watch pages to request at once in the loudness pass. These are
 // plain HTML GETs, not browser page loads, so they're cheap — but stay
 // polite rather than firing all ~345 at once.
@@ -125,7 +131,7 @@ async function runOnePass(browser, tracks) {
       let added = 0;
       for (const t of visible) {
         if (!tracks.has(t.videoId)) {
-          tracks.set(t.videoId, t);
+          tracks.set(t.videoId, { ...t, addedAt: TODAY });
           added++;
         }
       }

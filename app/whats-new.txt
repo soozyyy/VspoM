@@ -1,3 +1,1 @@
-New: a Queue tab at the bottom shows what plays next, even after the queue loops.
-Tap the x next to an upcoming song to take it out of the queue. You can now search inside a playlist.
-Swiping the app away from recent apps now stops the music.
+New: a ☰ menu with a News page, and a heads-up when new songs are added.

@@ -7,7 +7,7 @@
 **A background music player for VSPO! songs on Android.**<br>
 Every VSPO! member song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.20-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.21-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -25,7 +25,8 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 - **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
 - **Lock-screen and notification controls**: Previous, Play/Pause, Next, plus song artwork and a draggable progress bar. Bluetooth, wired headphone and car buttons work too.
 - **Even volume**: quiet and loud uploads play at about the same level, even if you open the app with no signal.
-- **Always-fresh song list**: new songs appear as soon as the song list is refreshed, no app update needed.
+- **Always-fresh song list**: new songs appear as soon as the song list is refreshed, no app update needed. The next time you open the app, it shows you what's new.
+- **News**: open the ☰ menu next to the search bar for a News page with every update and every new song, with dates. Tap a card for the full list of changes.
 - **Updates inside the app**: when a new version is out, the app shows what's new and installs it for you.
 - No account, no ads, no server. It's free to run.
 
@@ -96,6 +97,7 @@ Without `android/key.properties`, release builds are signed with the debug key. 
 Every push to `main` that touches `app/` runs `.github/workflows/build-apk.yml`. It builds a signed APK as version `1.0.<run number>` and publishes it to the rolling [`latest`](https://github.com/soozyyy/VspoM/releases/latest) release along with a `version.json`. The app reads that file to decide whether to offer an update.
 
 - **Update notes** come from `app/whats-new.txt` if the push changed it. Otherwise they come from the latest commit's title.
+- **News page history** is `app/assets/changelog.json` (the app reads it live from GitHub, with the bundled copy as fallback). Add an entry to it with every release: `notes` is the short summary (same text as `whats-new.txt`), `details` lists every change, one line each, and shows when you tap the card. New songs come from each song's `addedAt` date, which `scrape.js` stamps the first time it finds a song.
 - **Signing** needs two repo secrets: `VSPO_KEYSTORE_BASE64` and `VSPO_KEYSTORE_PASSWORD`. The keystore and `key.properties` are git-ignored; `android/key.properties.example` shows the format. If the keystore is ever lost, existing installs have to uninstall once, because Android treats a new signing key as a different app.
 
 ### Project layout
@@ -115,11 +117,12 @@ VspoM/
     lib/playlists.dart     # Playlists tab + playlist pages
     lib/widgets.dart       # thumbnails + Artists order
     lib/update_dialog.dart # in-app update check + dialog
+    lib/news.dart          # side menu, News page, new-songs popup
     whats-new.txt          # notes shown in the in-app update popup
     android/app/src/main/kotlin/
       MainActivity.kt      # channel handlers, version check, APK install
       OverlayService.kt    # playback engine + MediaSession
-    assets/                # bundled catalog fallback, logo, icon
+    assets/                # bundled catalog fallback, changelog.json (News), logo, icon
 ```
 
 ---

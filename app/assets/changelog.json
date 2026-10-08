@@ -1,0 +1,88 @@
+[
+  {
+    "version": "1.0.21",
+    "date": "2026-10-08",
+    "notes": "New: a ☰ menu with a News page, and a heads-up when new songs are added.",
+    "details": [
+      "New ☰ button next to the search bar. It opens a side menu with News and Vspo (the main screen).",
+      "News lists every app update and every batch of new songs, newest first, with dates.",
+      "Tap a News card to see everything that changed in that update, or the full list of new songs.",
+      "When new songs are added, a pop-up shows them the next time you open the app.",
+      "Tap a song in any of these pop-ups to play it.",
+      "The update pop-up now shows just the main changes. The full list is in News."
+    ]
+  },
+  {
+    "version": "1.0.20",
+    "date": "2026-09-29",
+    "notes": "New: a Queue tab, and search inside playlists.",
+    "details": [
+      "The footer now has three tabs: Library, Queue and Playlists.",
+      "Queue shows the song playing now, a big progress bar, and everything coming up next.",
+      "Tap ✕ next to an upcoming song to take it out of the queue.",
+      "Queue also previews (dimmed) what plays after the queue loops.",
+      "Tapping the mini-player opens the Queue tab.",
+      "Search inside a playlist to find a song fast. Tap it to play the playlist from there.",
+      "Swiping the app away from recent apps now stops the music."
+    ]
+  },
+  {
+    "version": "1.0.19",
+    "date": "2026-09-29",
+    "notes": "New: Playlists!",
+    "details": [
+      "New Playlists tab at the bottom: make as many named playlists as you like.",
+      "Add songs one at a time with search, or every song from a channel at once.",
+      "Drag to reorder, ✕ to remove a song, and rename or delete a playlist from the ⋮ menu.",
+      "Shuffle a playlist, or play it in order. Tap a song to play in order from there.",
+      "Playlists are saved on your phone."
+    ]
+  },
+  {
+    "version": "1.0.18",
+    "date": "2026-09-29",
+    "notes": "Updated: the built-in song list now has 347 songs.",
+    "details": [
+      "The song list built into the app (used when you open it with no signal) now has 347 songs.",
+      "Behind-the-scenes cleanup. Nothing else looks or works differently."
+    ]
+  },
+  {
+    "version": "1.0.17",
+    "date": "2026-09-24",
+    "notes": "Improved: steadier volume leveling.",
+    "details": [
+      "Volume leveling now works even when you open the app with no or slow signal.",
+      "Brand-new songs are leveled right away.",
+      "The volume holds steadier at the start of a song.",
+      "Removed the \"Allow notifications\" banner. The playback controls work without that permission."
+    ]
+  },
+  {
+    "version": "1.0.16",
+    "date": "2026-09-24",
+    "notes": "New: artwork and a draggable progress bar in the media player.",
+    "details": [
+      "The song's artwork now shows in the notification and on the lock screen.",
+      "The media player shows the song's time and a progress bar.",
+      "Drag the progress bar to skip around in the song."
+    ]
+  },
+  {
+    "version": "1.0.15",
+    "date": "2026-09-24",
+    "notes": "Fixed: tapping the music notification could open another app.",
+    "details": [
+      "Tapping VspoM's music notification now always opens VspoM, not another app like Twitter or YouTube."
+    ]
+  },
+  {
+    "date": "2026-09-23",
+    "notes": "New: the app can now update itself.",
+    "details": [
+      "When a new version is out, the app asks you when you open it.",
+      "Tap Update to download it, then Install. The permissions you granted are kept.",
+      "Tap Later and it asks again next time."
+    ]
+  }
+]
