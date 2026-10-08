@@ -1,0 +1,26 @@
+# VspoM website: the PC browser version of the app. A separate copy of the
+# app's code (app/lib), changed freely here without ever touching app/.
+# See the "Website" section of the repo README.
+name: vspom_web
+description: "VspoM in the browser: VSPO! music, shuffled."
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/catalog.json
+    - assets/branding/vspo_logo.png
