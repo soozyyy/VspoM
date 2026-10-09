@@ -37,10 +37,12 @@ jobs:
         with:
           channel: stable
 
-      # Keeps the offline-fallback copy of the song list fresh. Reads
+      # Keeps the offline-fallback copies of both song lists fresh. Reads
       # catalog-scraper/ only; nothing outside website/ is changed.
       - name: Bundle the current catalog as the offline fallback
-        run: cp ../catalog-scraper/catalog.json assets/catalog.json
+        run: |
+          cp ../catalog-scraper/catalog.json assets/catalog.json
+          cp ../catalog-scraper/himehina.json assets/himehina.json
 
       - name: Install dependencies
         run: flutter pub get

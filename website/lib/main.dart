@@ -27,8 +27,10 @@ part 'widgets.dart';
 //     footer tabs, a player bar along the bottom with a volume slider,
 //     content capped at a readable width, Space = play/pause.
 //   - Songs YouTube won't play on other sites are skipped with a notice.
-// The side drawer (☰ at the top of the rail) holds the site's sections:
-// just Vspo for now, more planned.
+// The side drawer (☰ at the top of the rail) switches between two pages,
+// VSPO! and HIMEHINA (AppPage), same as the app: each has its own song list,
+// playlists and accent colour; both song lists live in one _catalog
+// (Song.page), so the queue keeps playing across a switch.
 //
 //   catalog.dart     Song model + loading catalog.json
 //                    (remote -> browser cache -> bundled -> mock)
@@ -39,8 +41,37 @@ part 'widgets.dart';
 // Imports live here only; part files can't have their own.
 // ---------------------------------------------------------------------------
 
+enum AppPage { vspo, himehina }
+
+// The page the side drawer is on, remembered in this browser.
+final _page = ValueNotifier<AppPage>(
+    _storeGet('page') == 'himehina' ? AppPage.himehina : AppPage.vspo);
+
 void main() {
   runApp(const VspoMusicApp());
+}
+
+// Official colours, read from vspo.jp and himehina.jp (2026-10-09). VSPO!'s
+// main colour is a pink almost identical to HimeHina's, so the VSPO! page
+// uses its official second colour, purple. HIMEHINA: Hime's pink, with
+// Hina's blue as a small second accent (the seek-bar knob, the gradient
+// behind the header before anything plays).
+ThemeData _themeFor(AppPage page) {
+  final himehina = page == AppPage.himehina;
+  final accent = himehina ? const Color(0xFFFD5D8A) : const Color(0xFF7264D0);
+  final scheme =
+      ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.dark)
+          .copyWith(
+    primary: accent,
+    onPrimary: himehina ? Colors.black : Colors.white,
+    secondary: himehina ? const Color(0xFF3EB8FC) : accent,
+    onSecondary: himehina ? Colors.black : Colors.white,
+  );
+  return ThemeData(
+    colorScheme: scheme,
+    scaffoldBackgroundColor: const Color(0xFF121212),
+    useMaterial3: true,
+  );
 }
 
 class VspoMusicApp extends StatelessWidget {
@@ -48,16 +79,16 @@ class VspoMusicApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VspoM',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorSchemeSeed: Colors.deepPurple,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        useMaterial3: true,
+    // A page switch swaps the theme (MaterialApp fades between them). The
+    // home screen is const, so its state (queue, search) survives.
+    return ValueListenableBuilder<AppPage>(
+      valueListenable: _page,
+      builder: (_, page, _) => MaterialApp(
+        title: 'VspoM',
+        debugShowCheckedModeBanner: false,
+        theme: _themeFor(page),
+        home: const PlaylistScreen(),
       ),
-      home: const PlaylistScreen(),
     );
   }
 }
@@ -74,6 +105,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   bool _loadingCatalog = true;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _libraryScroll = ScrollController();
   String _searchQuery = '';
   List<int> _playOrder = [];
   int _playOrderIndex = 0;
@@ -173,6 +205,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     _progressTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _libraryScroll.dispose();
     _changes.dispose();
     super.dispose();
   }
@@ -182,15 +215,28 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   // row, and highlighting the currently-playing row, still refer back to the
   // right index in _catalog (shuffle order is also built from _catalog
   // indices, so this doesn't disturb playback).
-  List<int> get _visibleIndices {
-    if (_searchQuery.isEmpty) {
-      return List.generate(_catalog.length, (i) => i);
-    }
-    final result = <int>[];
-    for (var i = 0; i < _catalog.length; i++) {
-      if (_catalog[i].matchesSearch(_searchQuery)) result.add(i);
-    }
-    return result;
+  // Only the current page's songs.
+  List<int> get _visibleIndices => [
+        for (final i in _pageIndices(_page.value))
+          if (_catalog[i].matchesSearch(_searchQuery)) i,
+      ];
+
+  // Catalog indices of one page's songs, in catalog order.
+  List<int> _pageIndices(AppPage page) => [
+        for (var i = 0; i < _catalog.length; i++)
+          if (_catalog[i].page == page) i,
+      ];
+
+  // Called by the side drawer. The queue keeps playing; the library starts
+  // fresh (no leftover search, back at the top).
+  void _switchPage(AppPage page) {
+    if (page == _page.value) return;
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    if (_libraryScroll.hasClients) _libraryScroll.jumpTo(0);
+    _page.value = page; // swaps the theme (VspoMusicApp listens)
+    _storeSet('page', page.name);
+    setState(() => _searchQuery = '');
   }
 
   // Autocomplete rows shown under the search bar while typing — e.g. typing
@@ -229,6 +275,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     })>[];
 
     for (final song in _catalog) {
+      if (song.page != _page.value) continue;
       // Only test each artist once, on the song where we first see them —
       // whether the artist matches doesn't depend on which of their songs
       // we happened to check it against.
@@ -373,12 +420,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   }
 
   Future<void> _shufflePlayAll({List<int>? scope}) async {
-    // If a search filter is active, "Shuffle Play All" shuffles just the
-    // matching songs (and keeps looping within just them, via _shuffleScope)
-    // instead of the whole catalog. The artist page passes its own scope.
-    final filtered =
-        scope ?? (_searchQuery.isEmpty ? null : _visibleIndices);
-    if (filtered != null && filtered.isEmpty) return;
+    // "Shuffle Play All" shuffles this page's songs, or just the ones
+    // matching the search (and keeps looping within them, via
+    // _shuffleScope). The artist and playlist pages pass their own scope.
+    final filtered = scope ?? _visibleIndices;
+    if (filtered.isEmpty) return;
     _shuffleScope = filtered;
     _inOrder = false;
     _newShuffleOrder();
@@ -386,10 +432,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   }
 
   Future<void> _playSpecificSong(int songIndex) async {
-    // Tapping a specific track always plays/continues across the whole
-    // catalog, regardless of any active search filter or prior scoped
+    // Tapping a specific track always plays/continues across all of its
+    // page's songs, regardless of any active search filter or prior scoped
     // shuffle — matches the pre-search behavior.
-    _shuffleScope = null;
+    _shuffleScope = _pageIndices(_catalog[songIndex].page);
     _inOrder = false;
     _newShuffleOrder(startingWith: songIndex);
     await _playSongAt(0);
@@ -521,6 +567,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               children: [
                 _pcWidth(
                   CustomScrollView(
+                    controller: _libraryScroll,
                     slivers: [
                       SliverToBoxAdapter(child: _buildSearchBar()),
                       if (_searchFocusNode.hasFocus &&
@@ -529,7 +576,14 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         SliverToBoxAdapter(
                             child: _buildSuggestions(_suggestions)),
                       SliverToBoxAdapter(
-                        child: _buildHeader(currentSong, visibleIndices.length),
+                        // The big square only shows a song from this page;
+                        // otherwise it keeps the page's own logo.
+                        child: _buildHeader(
+                          currentSong?.page == _page.value
+                              ? currentSong
+                              : null,
+                          visibleIndices.length,
+                        ),
                       ),
                       if (_searchQuery.isNotEmpty && visibleIndices.isEmpty)
                         SliverToBoxAdapter(child: _buildNoResults())
@@ -578,12 +632,14 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         ),
       );
 
-  // The site's sections. Only Vspo (this screen) for now; more are planned,
-  // each one more NavigationDrawerDestination.
+  // The site's pages: 0 VSPO!, 1 HIMEHINA (AppPage order).
   Widget _buildDrawer() {
     return NavigationDrawer(
-      selectedIndex: 0,
-      onDestinationSelected: (_) => Navigator.of(context).pop(),
+      selectedIndex: _page.value.index,
+      onDestinationSelected: (i) {
+        Navigator.of(context).pop(); // closes the drawer
+        _switchPage(AppPage.values[i]);
+      },
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(28, 20, 16, 16),
@@ -592,12 +648,18 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         const NavigationDrawerDestination(
           icon: Icon(Icons.library_music_outlined),
           selectedIcon: Icon(Icons.library_music),
-          label: Text('Vspo'),
+          label: Text('VSPO!'),
+        ),
+        const NavigationDrawerDestination(
+          icon: Icon(Icons.favorite_outline),
+          selectedIcon: Icon(Icons.favorite),
+          label: Text('HIMEHINA'),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 16, 16),
           child: Text(
-            'Unofficial fan project. Songs curated by vspodex.app.',
+            'Unofficial fan project. VSPO! songs curated by vspodex.app; '
+            'HIMEHINA songs from their YouTube channel.',
             style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
           ),
         ),
@@ -607,6 +669,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
   Widget _buildHeader(Song? currentSong, int visibleCount) {
     final searchActive = _searchQuery.isNotEmpty;
+    final himehina = _page.value == AppPage.himehina;
+    final pageSongs = _pageIndices(_page.value).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Row(
@@ -638,9 +702,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'VSpo Music',
-                  style: TextStyle(
+                Text(
+                  himehina ? 'HIMEHINA' : 'VSPO!',
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -650,7 +714,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                 Text(
                   _loadingCatalog
                       ? 'Loading catalog…'
-                      : 'Curated by vspodex.app · ${_catalog.length} songs',
+                      : himehina
+                          ? 'From the HIMEHINA YouTube channel · '
+                              '$pageSongs songs'
+                          : 'Curated by vspodex.app · $pageSongs songs',
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
                 ),
                 const SizedBox(height: 20),
@@ -672,7 +739,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                 : 'Shuffle Play All'),
                       ),
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
                         padding: const EdgeInsets.symmetric(
                           vertical: 16,
                           horizontal: 24,
@@ -702,8 +768,28 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
   // The "nothing playing yet" state for the header — the VSpo logo, on a
   // white backing (the logo artwork itself has a white background). Also
-  // used as a fallback if a now-playing thumbnail fails to load.
+  // used as a fallback if a now-playing thumbnail fails to load. HIMEHINA:
+  // their handwritten signature (white, from himehina.jp's footer logo) on a
+  // Hime-pink to Hina-blue gradient.
   Widget _buildHeaderPlaceholder() {
+    if (_page.value == AppPage.himehina) {
+      final scheme = Theme.of(context).colorScheme;
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [scheme.primary, scheme.secondary],
+          ),
+        ),
+        child: Center(
+          child: FractionallySizedBox(
+            widthFactor: 0.8,
+            child: Image.asset('assets/branding/himehina_signature.png'),
+          ),
+        ),
+      );
+    }
     return Container(
       color: Colors.white,
       child: Image.asset(
@@ -883,7 +969,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: isCurrent ? Colors.deepPurpleAccent : Colors.white,
+          color: isCurrent
+              ? Theme.of(context).colorScheme.primary
+              : Colors.white,
           fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
@@ -1048,9 +1136,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         trackHeight: large ? 4 : 2.5,
         thumbShape: RoundSliderThumbShape(enabledThumbRadius: large ? 7 : 5),
         overlayShape: RoundSliderOverlayShape(overlayRadius: large ? 16 : 12),
-        activeTrackColor: Colors.deepPurpleAccent,
+        activeTrackColor: Theme.of(context).colorScheme.primary,
         inactiveTrackColor: Colors.grey.shade700,
-        thumbColor: Colors.deepPurpleAccent,
+        thumbColor: Theme.of(context).colorScheme.secondary,
       ),
       child: Slider(
         min: 0,
@@ -1310,11 +1398,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     );
   }
 
-  // Every artist in the catalog with their songs' catalog indices, in debut
-  // order (see _debutRank). Grouped by display name, same as _suggestions.
+  // Every artist on the current page with their songs' catalog indices, in
+  // debut order (see _debutRank). Grouped by display name, same as
+  // _suggestions.
   List<MapEntry<String, List<int>>> get _artists {
     final byArtist = <String, List<int>>{};
-    for (var i = 0; i < _catalog.length; i++) {
+    for (final i in _pageIndices(_page.value)) {
       byArtist.putIfAbsent(_catalog[i].artist, () => []).add(i);
     }
     return byArtist.entries.toList()
@@ -1423,7 +1512,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                       icon: const Icon(Icons.shuffle),
                       label: Text('Shuffle ${indices.length} songs'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),

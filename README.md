@@ -42,7 +42,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 
 ## Website (PC)
 
-On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same song list, shuffle, search, artists, queue and playlists as the app, laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
+On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same two pages as the app, VSPO! and HIMEHINA, with the same songs, shuffle, search, artists, queue and playlists, laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
 
 A few differences from the app:
 

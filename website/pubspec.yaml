@@ -2,7 +2,7 @@
 # app's code (app/lib), changed freely here without ever touching app/.
 # See the "Website" section of the repo README.
 name: vspom_web
-description: "VspoM in the browser: VSPO! music, shuffled."
+description: "VspoM in the browser: VSPO! and HIMEHINA music, shuffled."
 publish_to: 'none'
 version: 1.0.0
 
@@ -23,4 +23,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/catalog.json
+    - assets/himehina.json
     - assets/branding/vspo_logo.png
+    - assets/branding/himehina_signature.png
