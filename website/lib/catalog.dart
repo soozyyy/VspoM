@@ -34,6 +34,8 @@ class Song {
   // Date the scraper first found this song (YYYY-MM-DD). Null for the
   // original catalog. Drives the app's News page; unused on the website.
   final String? addedAt;
+  // Which side-drawer page the song belongs to: which file it came from.
+  final AppPage page;
 
   const Song({
     required this.videoId,
@@ -45,11 +47,13 @@ class Song {
     this.artistAvatarUrl,
     this.loudnessDb,
     this.addedAt,
+    this.page = AppPage.vspo,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
   // { videoId, title, artistName, artistSlug, thumbnail, artistAvatarUrl }
-  factory Song.fromJson(Map<String, dynamic> json) {
+  factory Song.fromJson(Map<String, dynamic> json,
+      [AppPage page = AppPage.vspo]) {
     final videoId = json['videoId'] as String;
     return Song(
       videoId: videoId,
@@ -67,6 +71,7 @@ class Song {
       artistAvatarUrl: json['artistAvatarUrl'] as String?,
       loudnessDb: (json['loudnessDb'] as num?)?.toDouble(),
       addedAt: json['addedAt'] as String?,
+      page: page,
     );
   }
 
@@ -101,75 +106,71 @@ class Song {
   }
 }
 
-// catalog-scraper/scrape.js is run by hand on the maintainer's PC and the
-// refreshed catalog.json is pushed to the repo (vspodex.app's Cloudflare
-// check blocks cloud servers, so it can't run on GitHub Actions). This is
-// that file's raw content: a plain JSON GET, no scraping happens on-device.
-// Update the org/repo/branch here if the repo ever moves.
+// catalog-scraper/scrape.js (VSPO!) and himehina.js (HIMEHINA) are run by
+// hand on the maintainer's PC and the refreshed files are pushed to the repo
+// (vspodex.app's Cloudflare check blocks cloud servers, so it can't run on
+// GitHub Actions). These are those files' raw content: a plain JSON GET, no
+// scraping happens in the browser. Update the org/repo/branch here if the
+// repo ever moves.
 const _remoteCatalogUrl =
     'https://raw.githubusercontent.com/soozyyy/VspoM/main/catalog-scraper/catalog.json';
+const _remoteHimehinaUrl =
+    'https://raw.githubusercontent.com/soozyyy/VspoM/main/catalog-scraper/himehina.json';
 
-/// Loads the VSpo catalog, freshest source first:
-/// 1. Live fetch from GitHub (_remoteCatalogUrl) — picks up whatever the
-///    last pushed scrape found, no site rebuild needed. Saved in the browser
-///    on success (see _catalogCacheKey).
-/// 2. The last catalog that live fetch saved, for a visit with no or slow
-///    network. (3) can be much older.
-/// 3. The copy bundled at build time as assets/catalog.json, for the very
-///    first visit with no network.
-/// 4. Mock placeholder data, so the site still runs before any of these exist.
+/// Both pages' songs in one list, VSPO! first. One list means the queue
+/// (catalog indices) keeps working when you switch pages; each page shows
+/// only its own songs (Song.page).
 Future<List<Song>> _loadCatalog() async {
-  final remote = await _fetchRemoteCatalog();
-  if (remote != null && remote.isNotEmpty) return remote;
+  final lists = await Future.wait([
+    _loadSongList(_remoteCatalogUrl, 'catalog', AppPage.vspo),
+    _loadSongList(_remoteHimehinaUrl, 'himehina', AppPage.himehina),
+  ]);
+  return [...(lists[0].isNotEmpty ? lists[0] : _mockCatalog()), ...lists[1]];
+}
 
-  final cached = await _loadCachedCatalog();
-  if (cached != null && cached.isNotEmpty) return cached;
+/// Loads one song list, freshest source first:
+/// 1. Live fetch from GitHub (`url`) — picks up whatever the last pushed
+///    scrape found, no site rebuild needed. Saved in the browser (under
+///    `name`) on success.
+/// 2. The last copy that live fetch saved, for a visit with no or slow
+///    network. (3) can be much older.
+/// 3. The copy bundled at build time as assets/`name`.json, for the very
+///    first visit with no network.
+/// Empty if all three fail (the caller falls back to mock data for VSPO!).
+Future<List<Song>> _loadSongList(String url, String name, AppPage page) async {
+  List<Song> parse(String body) => (jsonDecode(body) as List<dynamic>)
+      .map((e) => Song.fromJson(e as Map<String, dynamic>, page))
+      .toList();
+
+  final body = await _fetchText(url);
+  if (body != null) {
+    try {
+      final songs = parse(body);
+      if (songs.isNotEmpty) {
+        // Only a body that fully parsed is worth keeping. Each list is well
+        // under localStorage's ~5 MB limit.
+        _storeSet(name, body);
+        return songs;
+      }
+    } catch (_) {
+      // Malformed JSON: the cached and bundled fallbacks cover it.
+    }
+  }
 
   try {
-    final raw = await rootBundle.loadString('assets/catalog.json');
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    if (decoded.isNotEmpty) {
-      return decoded
-          .map((e) => Song.fromJson(e as Map<String, dynamic>))
-          .toList();
+    final cached = _storeGet(name);
+    if (cached != null) {
+      final songs = parse(cached);
+      if (songs.isNotEmpty) return songs;
     }
   } catch (_) {
-    // Fall through to mock data below.
+    // Fall through to the bundled copy.
   }
-  return _mockCatalog();
-}
 
-Future<List<Song>?> _fetchRemoteCatalog() async {
-  final body = await _fetchText(_remoteCatalogUrl);
-  if (body == null) return null;
   try {
-    final decoded = jsonDecode(body) as List<dynamic>;
-    final songs = decoded
-        .map((e) => Song.fromJson(e as Map<String, dynamic>))
-        .toList();
-    // Only a body that fully parsed is worth keeping.
-    if (songs.isNotEmpty) _storeSet(_catalogCacheKey, body);
-    return songs;
+    return parse(await rootBundle.loadString('assets/$name.json'));
   } catch (_) {
-    // Malformed JSON: the cached and bundled fallbacks cover it.
-    return null;
-  }
-}
-
-// The last good remote catalog, in this browser's localStorage (~140 KB,
-// well under its ~5 MB limit).
-const _catalogCacheKey = 'catalog';
-
-Future<List<Song>?> _loadCachedCatalog() async {
-  try {
-    final raw = _storeGet(_catalogCacheKey);
-    if (raw == null) return null;
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .map((e) => Song.fromJson(e as Map<String, dynamic>))
-        .toList();
-  } catch (_) {
-    return null;
+    return [];
   }
 }
 

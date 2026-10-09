@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "One-time/occasional scraper that reads vspodex.app's /music page and writes catalog.json for the VSpo Music app.",
+  "description": "Occasional scrapers run on the maintainer's PC: scrape.js reads vspodex.app's /music page into catalog.json (VSPO!), himehina.js reads HimeHina's YouTube playlists into himehina.json.",
   "scripts": {
     "scrape": "node scrape.js",
     "test": "node loudness.test.js --scraper",
-    "test:app": "node loudness.test.js"
+    "test:app": "node loudness.test.js",
+    "himehina": "node himehina.js",
+    "test:himehina": "node himehina.test.js"
   },
   "dependencies": {
     "playwright": "^1.47.0"

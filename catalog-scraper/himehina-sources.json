@@ -1,0 +1,17 @@
+{
+  "channel": "@HimeHina",
+  "channelPlaylists": [
+    "PL1tX8zAv8bPk85chzXCyh6CgEyqFAdxwV",
+    "PL1tX8zAv8bPlL68x0sS_DRP0jmRFq5ybW"
+  ],
+  "topicChannels": {
+    "duo": "UCefpxej6z5EbIjMKrCgXE9w",
+    "hime": "UCP-6g_bab4MeO8P-j3YMolQ",
+    "hina": "UC-ZnctFZyb77Zc3Ev_DtwKA"
+  },
+  "exclude": {
+    "srJaGoGOs_g": "hanare-banare: romaji duplicate of 花れ話れ on Hime's Topic channel"
+  },
+  "titles": {},
+  "include": []
+}

@@ -37,6 +37,8 @@ class Song {
   // Date the scraper first found this song (YYYY-MM-DD). Null for the
   // original catalog. Drives the News page — see news.dart.
   final String? addedAt;
+  // Which side-drawer page the song belongs to: which file it came from.
+  final AppPage page;
 
   const Song({
     required this.videoId,
@@ -48,11 +50,13 @@ class Song {
     this.artistAvatarUrl,
     this.loudnessDb,
     this.addedAt,
+    this.page = AppPage.vspo,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
   // { videoId, title, artistName, artistSlug, thumbnail, artistAvatarUrl }
-  factory Song.fromJson(Map<String, dynamic> json) {
+  factory Song.fromJson(Map<String, dynamic> json,
+      [AppPage page = AppPage.vspo]) {
     final videoId = json['videoId'] as String;
     return Song(
       videoId: videoId,
@@ -70,6 +74,7 @@ class Song {
       artistAvatarUrl: json['artistAvatarUrl'] as String?,
       loudnessDb: (json['loudnessDb'] as num?)?.toDouble(),
       addedAt: json['addedAt'] as String?,
+      page: page,
     );
   }
 
@@ -104,99 +109,101 @@ class Song {
   }
 }
 
-// catalog-scraper/scrape.js is run by hand on the maintainer's PC and the
-// refreshed catalog.json is pushed to the repo (vspodex.app's Cloudflare
-// check blocks cloud servers, so it can't run on GitHub Actions). This is
-// that file's raw content: a plain JSON GET, no scraping happens on-device.
-// Update the org/repo/branch here if the repo ever moves.
+// catalog-scraper/scrape.js (VSPO!) and himehina.js (HIMEHINA) are run by
+// hand on the maintainer's PC and the refreshed files are pushed to the repo
+// (vspodex.app's Cloudflare check blocks cloud servers, so it can't run on
+// GitHub Actions). These are those files' raw content: a plain JSON GET, no
+// scraping happens on-device. Update the org/repo/branch here if the repo
+// ever moves.
 const _remoteCatalogUrl =
     'https://raw.githubusercontent.com/soozyyy/VspoM/main/catalog-scraper/catalog.json';
+const _remoteHimehinaUrl =
+    'https://raw.githubusercontent.com/soozyyy/VspoM/main/catalog-scraper/himehina.json';
 
-/// Loads the VSpo catalog, freshest source first:
-/// 1. Live fetch from GitHub (_remoteCatalogUrl) — picks up whatever the
-///    last pushed scrape found, no app rebuild needed. Saved to disk on
-///    success (see _saveCachedCatalog).
-/// 2. The last catalog that live fetch saved, for a launch with no or slow
+/// Both pages' songs in one list, VSPO! first. One list means the queue
+/// (catalog indices) keeps working when you switch pages; each page shows
+/// only its own songs (Song.page).
+Future<List<Song>> _loadCatalog() async {
+  final lists = await Future.wait([
+    _loadSongList(_remoteCatalogUrl, 'catalog.json', AppPage.vspo),
+    _loadSongList(_remoteHimehinaUrl, 'himehina.json', AppPage.himehina),
+  ]);
+  return [...(lists[0].isNotEmpty ? lists[0] : _mockCatalog()), ...lists[1]];
+}
+
+/// Loads one song list, freshest source first:
+/// 1. Live fetch from GitHub (`url`) — picks up whatever the last pushed
+///    scrape found, no app rebuild needed. Saved to disk on success (see
+///    _saveCachedCatalog).
+/// 2. The last copy that live fetch saved, for a launch with no or slow
 ///    network. Without this, such a launch fell straight to (3), which can
 ///    be much older — and an old copy without loudnessDb turns volume
 ///    leveling off for the whole session.
-/// 3. The copy bundled at build time as assets/catalog.json, for the very
-///    first launch with no network.
-/// 4. Mock placeholder data, so the app still runs before any of these exist.
-Future<List<Song>> _loadCatalog() async {
-  final remote = await _fetchRemoteCatalog();
+/// 3. The copy bundled at build time as assets/`file`, for the very first
+///    launch with no network.
+/// Empty if all three fail (the caller falls back to mock data for VSPO!).
+Future<List<Song>> _loadSongList(String url, String file, AppPage page) async {
+  List<Song> parse(String body) => (jsonDecode(body) as List<dynamic>)
+      .map((e) => Song.fromJson(e as Map<String, dynamic>, page))
+      .toList();
+
+  final remote = await _fetchRemoteCatalog(url, file, parse);
   if (remote != null && remote.isNotEmpty) return remote;
 
-  final cached = await _loadCachedCatalog();
-  if (cached != null && cached.isNotEmpty) return cached;
-
   try {
-    final raw = await rootBundle.loadString('assets/catalog.json');
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    if (decoded.isNotEmpty) {
-      return decoded
-          .map((e) => Song.fromJson(e as Map<String, dynamic>))
-          .toList();
+    final cache = await _cachedCatalogFile(file);
+    if (await cache.exists()) {
+      final cached = parse(await cache.readAsString());
+      if (cached.isNotEmpty) return cached;
     }
   } catch (_) {
-    // Fall through to mock data below.
+    // Fall through to the bundled copy.
   }
-  return _mockCatalog();
+
+  try {
+    return parse(await rootBundle.loadString('assets/$file'));
+  } catch (_) {
+    return [];
+  }
 }
 
-Future<List<Song>?> _fetchRemoteCatalog() async {
+Future<List<Song>?> _fetchRemoteCatalog(
+    String url, String file, List<Song> Function(String) parse) async {
   final client = HttpClient();
   client.connectionTimeout = const Duration(seconds: 6);
   try {
-    final request = await client
-        .getUrl(Uri.parse(_remoteCatalogUrl))
-        .timeout(const Duration(seconds: 6));
+    final request =
+        await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 6));
     final response = await request.close().timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) return null;
     final body = await response.transform(utf8.decoder).join();
-    final decoded = jsonDecode(body) as List<dynamic>;
-    final songs = decoded
-        .map((e) => Song.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final songs = parse(body);
     // Only a body that fully parsed is worth keeping. Not awaited: a slow
     // disk must never delay the song list.
-    if (songs.isNotEmpty) _saveCachedCatalog(body);
+    if (songs.isNotEmpty) _saveCachedCatalog(file, body);
     return songs;
   } catch (_) {
     // Offline, DNS failure, GitHub hiccup, malformed JSON, etc. — the
-    // cached and bundled fallbacks in _loadCatalog() cover all of these.
+    // cached and bundled fallbacks in _loadSongList() cover all of these.
     return null;
   } finally {
     client.close(force: true);
   }
 }
 
-Future<File> _cachedCatalogFile() async =>
-    File('${(await getApplicationSupportDirectory()).path}/catalog.json');
+Future<File> _cachedCatalogFile(String file) async =>
+    File('${(await getApplicationSupportDirectory()).path}/$file');
 
-Future<void> _saveCachedCatalog(String body) async {
+Future<void> _saveCachedCatalog(String file, String body) async {
   try {
     // Write-then-rename, so a crash mid-write can't leave a truncated file
     // that would then be the fallback.
-    final file = await _cachedCatalogFile();
-    final tmp = File('${file.path}.tmp');
+    final cache = await _cachedCatalogFile(file);
+    final tmp = File('${cache.path}.tmp');
     await tmp.writeAsString(body, flush: true);
-    await tmp.rename(file.path);
+    await tmp.rename(cache.path);
   } catch (_) {
     // Caching is best-effort; the bundled asset is still there.
-  }
-}
-
-Future<List<Song>?> _loadCachedCatalog() async {
-  try {
-    final file = await _cachedCatalogFile();
-    if (!await file.exists()) return null;
-    final decoded = jsonDecode(await file.readAsString()) as List<dynamic>;
-    return decoded
-        .map((e) => Song.fromJson(e as Map<String, dynamic>))
-        .toList();
-  } catch (_) {
-    return null;
   }
 }
 

@@ -4,10 +4,10 @@
 
 # VspoM
 
-**A background music player for VSPO! songs on Android.**<br>
-Every VSPO! member song, shuffled and looping, even with the screen off.
+**A background music player for VSPO! and HIMEHINA songs on Android.**<br>
+Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.21-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.22-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -17,6 +17,7 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 
 ## Features
 
+- **Two pages, VSPO! and HIMEHINA**: switch in the ☰ menu. Each has its own songs, artists, playlists and colours (VSPO! purple, HIMEHINA pink and blue), and the music keeps playing when you switch.
 - **Background playback.** Keeps playing with the screen off or while you use other apps.
 - **Shuffle everything**, or just one artist, or just your search results. It loops forever.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
@@ -41,7 +42,7 @@ Every VSPO! member song, shuffled and looping, even with the screen off.
 
 ## Website (PC)
 
-On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same song list, shuffle, search, artists, queue and playlists as the app, laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
+On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same two pages as the app, VSPO! and HIMEHINA, with the same songs, shuffle, search, artists, queue and playlists, laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
 
 A few differences from the app:
 
@@ -62,7 +63,7 @@ Swipe VspoM away from your recent apps, or pause and swipe the notification away
 It's a personal project, shared as-is for anyone who wants to sideload it.
 
 **Where do the songs come from?**
-The song list comes from [vspodex.app](https://www.vspodex.app)'s music page. It's refreshed whenever the maintainer runs the scraper, and the audio streams from the original YouTube uploads.
+The VSPO! song list comes from [vspodex.app](https://www.vspodex.app)'s music page. The HIMEHINA song list comes straight from their YouTube channel: their own song playlists, plus YouTube's official album uploads for songs that have no video. Both are refreshed whenever the maintainer runs the scrapers, and the audio streams from the original YouTube uploads.
 
 ---
 
@@ -91,6 +92,8 @@ git push
 ```
 
 The app picks up the pushed `catalog.json` on its next launch, no rebuild needed. If a scrape prints "No track cards", it saves `debug-screenshot.png` showing what the page served instead.
+
+The HIMEHINA page's list is `himehina.json`, built by `catalog-scraper/himehina.js` with no browser or API key. It reads the channel's ORIGINAL MUSIC and COVER MUSIC playlists and the three "- Topic" channels (YouTube's album uploads), keeps one upload per song (the channel's full video first, else the Topic audio; never Dance Videos, ShortMVs, live tracks or interludes), and merges into the existing file. One-off fixes go in `himehina-sources.json`. Run `npm run himehina`, then commit `himehina.json`. `npm run test:himehina` checks the song rules.
 
 ### Build from source
 
@@ -132,9 +135,13 @@ VspoM/
     deploy-website.yml     # build the website, publish to GitHub Pages
   catalog-scraper/
     scrape.js              # vspodex.app scraper (Playwright)
+    himehina.js            # HIMEHINA scraper (plain YouTube pages)
+    himehina-core.js       # what counts as a song, merging (tested by himehina.test.js)
+    himehina-sources.json  # HIMEHINA playlists, Topic channels, manual fixes
     loudness.js            # loudness extraction + shared player constants
     loudness.test.js       # volume-leveling checks (npm test = scraper checks, npm run test:app = APK build)
-    catalog.json           # the song list the app fetches
+    catalog.json           # the VSPO! song list the app fetches
+    himehina.json          # the HIMEHINA song list the app fetches
   app/                     # Flutter project
     lib/main.dart          # main screen + playback sequencing
     lib/catalog.dart       # Song model + loading the song list
@@ -158,6 +165,6 @@ VspoM/
 
 ## Credits & disclaimer
 
-The song list comes from [vspodex.app](https://www.vspodex.app). All music belongs to its creators and is streamed from YouTube.
+The VSPO! song list comes from [vspodex.app](https://www.vspodex.app); the HIMEHINA list from their YouTube channel. All music belongs to its creators and is streamed from YouTube.
 
 VspoM is an unofficial fan project. It is not affiliated with or endorsed by VSPO!, Brave group, YouTube or Google.
