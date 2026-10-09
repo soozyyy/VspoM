@@ -1,5 +1,32 @@
 [
   {
+    "version": "1.0.22",
+    "date": "2026-10-09",
+    "notes": "New: a HIMEHINA page with all their songs, in its own colours.",
+    "details": [
+      "New HIMEHINA page in the ☰ menu, with every HIMEHINA song: originals, covers and solo songs by 田中ヒメ and 鈴木ヒナ.",
+      "Each page has its own colours: VSPO! in its official purple, HIMEHINA in pink and blue.",
+      "Each page has its own songs, search, artists and playlists. Your existing playlists are on the VSPO! page.",
+      "Switching pages keeps the music playing. Tap a song or Shuffle on the other page to change what's playing.",
+      "The app opens on the page you used last.",
+      "New songs in News and in the pop-up are listed under VSPO! and HIMEHINA.",
+      "The ☰ menu button is now on the Queue and Playlists tabs too.",
+      "The ☰ menu's Vspo item and the page title are now called VSPO!."
+    ]
+  },
+  {
+    "date": "2026-10-09",
+    "tag": "NEWS",
+    "title": "VspoM is on PC too",
+    "notes": "There's now a website version of VspoM for your computer. To get the link, visit our GitHub page: github.com/soozyyy/VspoM",
+    "details": [
+      "It has the same songs, shuffle, search, artists, queue and playlists, laid out for a big screen.",
+      "Nothing to install: it runs in your computer's web browser.",
+      "It's made for computers. On your phone, keep using the app: phone browsers stop the music when the screen locks.",
+      "Playlists on the website are saved in that browser only. They don't sync with the app."
+    ]
+  },
+  {
     "version": "1.0.21",
     "date": "2026-10-08",
     "notes": "New: a ☰ menu with a News page, and a heads-up when new songs are added.",

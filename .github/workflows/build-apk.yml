@@ -71,9 +71,11 @@ jobs:
         working-directory: catalog-scraper
         run: node loudness.test.js
 
-      # Keeps the offline-fallback copy of the song list fresh on every build.
+      # Keeps the offline-fallback copies of both song lists fresh on every build.
       - name: Bundle the current catalog as the offline fallback
-        run: cp ../catalog-scraper/catalog.json assets/catalog.json
+        run: |
+          cp ../catalog-scraper/catalog.json assets/catalog.json
+          cp ../catalog-scraper/himehina.json assets/himehina.json
 
       - name: Install dependencies
         run: flutter pub get

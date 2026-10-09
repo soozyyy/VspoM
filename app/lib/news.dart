@@ -3,14 +3,17 @@ part of 'main.dart';
 // Feature 7: News. Three pieces:
 // - "N new songs" popup on launch: songs in the catalog that this phone
 //   hasn't announced yet (seen_songs.json on the device).
-// - The side drawer: News, and Vspo (back to the main screen with the footer).
+// - The side drawer: News, then the two pages, VSPO! and HIMEHINA (see
+//   AppPage in main.dart).
 // - The News page: every update (assets/changelog.json) and every new song
 //   (Song.addedAt), newest first, as same-size cards. Tapping a card opens
 //   the details: an update's full change list ("details"), or the songs.
 //
-// changelog.json entries: {version?, date, notes, details?}. notes = the
-// short summary (same text as whats-new.txt, which the update popup shows);
-// details = every user-visible change, one line each.
+// changelog.json entries: {version?, date, notes, details?, tag?, title?}.
+// notes = the short summary (same text as whats-new.txt, which the update
+// popup shows); details = every user-visible change, one line each.
+// tag/title are for announcements that aren't an app update (e.g. "NEWS"),
+// instead of "UPDATE" / "Version x".
 
 // Live copy, so a new entry shows without an app update. Same repo as the
 // catalog (see _remoteCatalogUrl).
@@ -81,15 +84,31 @@ extension _News on _PlaylistScreenState {
     await _saveSeenSongs({...?seen, for (final s in _catalog) s.videoId});
     // No file yet: everything counts as seen, or it would announce ~350 songs.
     if (seen == null || !mounted) return;
+    // Only songs the scraper marked as new: a song list that's new to this
+    // phone (HIMEHINA's, the first time) is a starting list, not ~150 new
+    // songs.
     final fresh = [
       for (var i = 0; i < _catalog.length; i++)
-        if (!seen.contains(_catalog[i].videoId)) i,
+        if (!seen.contains(_catalog[i].videoId) && _catalog[i].addedAt != null)
+          i,
     ];
     if (fresh.isEmpty) return;
     _showSongsDialog(fresh);
   }
 
   static String _songCount(int n) => n == 1 ? '1 new song' : '$n new songs';
+
+  static const _pageNames = {
+    AppPage.vspo: 'VSPO!',
+    AppPage.himehina: 'HIMEHINA',
+  };
+
+  // New songs split by page, VSPO! first; pages with none are left out.
+  Map<AppPage, List<int>> _byPage(List<int> songs) => {
+        for (final page in AppPage.values)
+          if (songs.any((i) => _catalog[i].page == page))
+            page: [for (final i in songs) if (_catalog[i].page == page) i],
+      };
 
   // The launch popup and a NEW SONGS card's details. Tap a song to play it.
   void _showSongsDialog(List<int> songs, {String? date}) {
@@ -103,11 +122,26 @@ extension _News on _PlaylistScreenState {
           child: ListView(
             shrinkWrap: true,
             children: [
-              for (final i in songs)
-                _buildTrackRow(i, onTap: () {
-                  Navigator.of(c).pop();
-                  _playSpecificSong(i);
-                }),
+              for (final MapEntry(key: page, value: group)
+                  in _byPage(songs).entries) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
+                  child: Text(
+                    _pageNames[page]!,
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+                for (final i in group)
+                  _buildTrackRow(i, onTap: () {
+                    Navigator.of(c).pop();
+                    _playSpecificSong(i);
+                  }),
+              ],
             ],
           ),
         ),
@@ -136,7 +170,8 @@ extension _News on _PlaylistScreenState {
               Text((e['notes'] as String? ?? '').trim()),
               if (details.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text('All changes', style: Theme.of(c).textTheme.titleSmall),
+                Text(e['tag'] is String ? 'Details' : 'All changes',
+                    style: Theme.of(c).textTheme.titleSmall),
                 const SizedBox(height: 6),
                 for (final d in details)
                   Padding(
@@ -163,8 +198,11 @@ extension _News on _PlaylistScreenState {
     );
   }
 
-  static String _updateTitle(Map<String, dynamic> e) =>
-      e['version'] is String ? 'Version ${e['version']}' : 'App update';
+  static String _updateTitle(Map<String, dynamic> e) => e['title'] is String
+      ? e['title'] as String
+      : e['version'] is String
+          ? 'Version ${e['version']}'
+          : 'App update';
 
   static String _newsDate(String date) => date.replaceAll('-', '/');
 
@@ -182,19 +220,24 @@ extension _News on _PlaylistScreenState {
 
   // ---- Side drawer ----
 
-  // onNews: which page the drawer is on, so that item shows as selected.
+  // onNews: whether the drawer is open on the News page, so the right item
+  // shows as selected. Items: 0 News, 1 VSPO!, 2 HIMEHINA.
   Widget _buildDrawer({required bool onNews}) {
     return NavigationDrawer(
-      selectedIndex: onNews ? 0 : 1,
+      selectedIndex: onNews ? 0 : 1 + _page.value.index,
       onDestinationSelected: (i) {
-        if (i == 0 && !onNews) {
+        if (i == 0) {
           Navigator.of(context).pop(); // closes the drawer
-          _pushLive(_buildNews);
-        } else if (i == 1 && onNews) {
+          if (!onNews) _pushLive(_buildNews);
+          return;
+        }
+        // Close the drawer; from News, go back to the main screen.
+        if (onNews) {
           Navigator.of(context).popUntil((r) => r.isFirst);
         } else {
           Navigator.of(context).pop();
         }
+        _switchPage(AppPage.values[i - 1]);
       },
       children: [
         Padding(
@@ -219,7 +262,12 @@ extension _News on _PlaylistScreenState {
         const NavigationDrawerDestination(
           icon: Icon(Icons.library_music_outlined),
           selectedIcon: Icon(Icons.library_music),
-          label: Text('Vspo'),
+          label: Text('VSPO!'),
+        ),
+        const NavigationDrawerDestination(
+          icon: Icon(Icons.favorite_outline),
+          selectedIcon: Icon(Icons.favorite),
+          label: Text('HIMEHINA'),
         ),
       ],
     );
@@ -239,8 +287,10 @@ extension _News on _PlaylistScreenState {
         (
           e['date'] as String,
           _buildNewsCard(
-            tag: 'UPDATE',
-            tagColor: Colors.deepPurpleAccent,
+            tag: e['tag'] is String ? e['tag'] as String : 'UPDATE',
+            tagColor: Theme.of(context).colorScheme.primary,
+            // White on purple, black on HIMEHINA pink.
+            tagTextColor: Theme.of(context).colorScheme.onPrimary,
             date: e['date'] as String,
             title: _updateTitle(e),
             preview: (e['notes'] as String? ?? '').trim(),
@@ -255,11 +305,25 @@ extension _News on _PlaylistScreenState {
             tagColor: Colors.teal,
             date: date,
             title: _songCount(songs.length),
-            preview: songs.map((i) => _catalog[i].title).join(' · '),
+            // "VSPO!: a · b   HIMEHINA: c"
+            preview: [
+              for (final MapEntry(key: page, value: group)
+                  in _byPage(songs).entries)
+                '${_pageNames[page]}: '
+                    '${group.map((i) => _catalog[i].title).join(' · ')}',
+            ].join('   '),
             onTap: () => _showSongsDialog(songs, date: date),
           ),
         ),
-    ]..sort((a, b) => b.$1.compareTo(a.$1));
+    ];
+    // Newest first. Stable for cards on the same day: changelog.json order
+    // (its newest entry is at the top) decides, so an announcement listed
+    // under a release stays under it.
+    final order = List.generate(cards.length, (i) => i)
+      ..sort((a, b) {
+        final byDate = cards[b].$1.compareTo(cards[a].$1);
+        return byDate != 0 ? byDate : a.compareTo(b);
+      });
 
     final song = _currentSong;
     return Scaffold(
@@ -272,7 +336,7 @@ extension _News on _PlaylistScreenState {
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [for (final c in cards) c.$2],
+              children: [for (final i in order) cards[i].$2],
             ),
       bottomNavigationBar: song == null ? null : _buildMiniPlayer(song),
     );
@@ -283,6 +347,7 @@ extension _News on _PlaylistScreenState {
   Widget _buildNewsCard({
     required String tag,
     required Color tagColor,
+    Color tagTextColor = Colors.white,
     required String date,
     required String title,
     required String preview,
@@ -312,8 +377,8 @@ extension _News on _PlaylistScreenState {
                       ),
                       child: Text(
                         tag,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: tagTextColor,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.6,

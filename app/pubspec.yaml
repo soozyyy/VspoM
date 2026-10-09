@@ -108,10 +108,13 @@ flutter:
   # catalog changes, then rebuild.
   assets:
     - assets/catalog.json
+    # HIMEHINA page's song list (catalog-scraper/himehina.json), same idea.
+    - assets/himehina.json
     # Update history for the News page (news.dart). Also fetched live from
     # GitHub, so this copy only matters offline. Add an entry every release.
     - assets/changelog.json
     - assets/branding/vspo_logo.png
+    - assets/branding/himehina_signature.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

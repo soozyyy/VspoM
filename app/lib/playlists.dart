@@ -7,21 +7,33 @@ part of 'main.dart';
 // Stored as videoIds, never catalog indices: indices shift whenever the
 // catalog gains songs. A videoId that's no longer in the catalog is hidden
 // but kept, so the song comes back if it returns.
+//
+// Each page (VSPO!, HIMEHINA) has its own playlists: same file, a "page"
+// field per playlist. Playlists saved before HIMEHINA existed have none and
+// are VSPO!'s.
 
 class Playlist {
-  Playlist({required this.id, required this.name, required this.videoIds});
+  Playlist({
+    required this.id,
+    required this.name,
+    required this.videoIds,
+    this.page = AppPage.vspo,
+  });
 
   final String id;
   String name;
   List<String> videoIds;
+  final AppPage page;
 
   factory Playlist.fromJson(Map<String, dynamic> json) => Playlist(
         id: json['id'] as String,
         name: json['name'] as String,
         videoIds: List<String>.from(json['videoIds'] as List<dynamic>),
+        page: json['page'] == 'himehina' ? AppPage.himehina : AppPage.vspo,
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'videoIds': videoIds};
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'videoIds': videoIds, 'page': page.name};
 }
 
 Future<File> _playlistsFile() async =>
@@ -117,6 +129,7 @@ extension _Playlists on _PlaylistScreenState {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       videoIds: [],
+      page: _page.value,
     );
     _editPlaylists(() => _playlists.add(p));
     _openPlaylist(p);
@@ -140,13 +153,21 @@ extension _Playlists on _PlaylistScreenState {
   // ---- Playlists tab (footer) ----
 
   Widget _buildPlaylistsTab() {
+    final mine = [for (final p in _playlists) if (p.page == _page.value) p];
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          // Same left edge as the Library's ☰ + search bar.
+          padding: const EdgeInsets.fromLTRB(8, 0, 20, 12),
           child: Row(
             children: [
+              IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Menu',
+                onPressed: _openDrawer,
+              ),
+              const SizedBox(width: 4),
               const Expanded(
                 child: Text(
                   'Playlists',
@@ -162,14 +183,11 @@ extension _Playlists on _PlaylistScreenState {
                     (_playlistsLoaded && !_loadingCatalog) ? _newPlaylist : null,
                 icon: const Icon(Icons.add),
                 label: const Text('New playlist'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                ),
               ),
             ],
           ),
         ),
-        if (_playlistsLoaded && _playlists.isEmpty)
+        if (_playlistsLoaded && mine.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
             child: Text(
@@ -177,7 +195,7 @@ extension _Playlists on _PlaylistScreenState {
               style: TextStyle(color: Colors.grey.shade500),
             ),
           ),
-        for (final p in _playlists) _buildPlaylistRow(p),
+        for (final p in mine) _buildPlaylistRow(p),
       ],
     );
   }
@@ -347,7 +365,6 @@ extension _Playlists on _PlaylistScreenState {
                   icon: const Icon(Icons.shuffle),
                   label: const Text('Shuffle'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
@@ -428,8 +445,9 @@ extension _Playlists on _PlaylistScreenState {
       (c) => StatefulBuilder(
         builder: (c, setLocal) {
           final inList = p.videoIds.toSet();
+          // Only songs from the playlist's own page.
           final matches = [
-            for (var i = 0; i < _catalog.length; i++)
+            for (final i in _pageIndices(p.page))
               if (_catalog[i].matchesSearch(query)) i,
           ];
           return Scaffold(
@@ -478,7 +496,7 @@ extension _Playlists on _PlaylistScreenState {
                           icon: Icon(
                             added ? Icons.check_circle : Icons.add_circle_outline,
                             color: added
-                                ? Colors.deepPurpleAccent
+                                ? Theme.of(context).colorScheme.primary
                                 : Colors.grey.shade400,
                           ),
                           onPressed: toggle,
