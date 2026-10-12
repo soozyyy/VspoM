@@ -1,0 +1,618 @@
+{
+  "updated": "2026-10-12",
+  "releases": 37,
+  "tracks": [
+    {
+      "title": "キセキ色",
+      "kind": "original"
+    },
+    {
+      "title": "ユメミテル",
+      "kind": "original"
+    },
+    {
+      "title": "花れ話れ",
+      "kind": "original"
+    },
+    {
+      "title": "Resistance!",
+      "kind": "original"
+    },
+    {
+      "title": "Get Out!!",
+      "kind": "original"
+    },
+    {
+      "title": "君と奏でる五線譜",
+      "kind": "original"
+    },
+    {
+      "title": "空っぽの箱庭",
+      "kind": "original"
+    },
+    {
+      "title": "Raise your voice!",
+      "kind": "original"
+    },
+    {
+      "title": "Realize Dream",
+      "kind": "original"
+    },
+    {
+      "title": "流星パーティーライド",
+      "kind": "original"
+    },
+    {
+      "title": "TURN UP",
+      "kind": "original"
+    },
+    {
+      "title": "ふたり、星になれたら",
+      "kind": "original"
+    },
+    {
+      "title": "Raise your voice! ( ver.HIME )",
+      "kind": "original"
+    },
+    {
+      "title": "花れ話れ ( ver.HINA )",
+      "kind": "original"
+    },
+    {
+      "title": "しゃぼんだま",
+      "kind": "original"
+    },
+    {
+      "title": "LADY CRAZY",
+      "kind": "original"
+    },
+    {
+      "title": "V",
+      "kind": "original"
+    },
+    {
+      "title": "愛包ダンスホール",
+      "kind": "original"
+    },
+    {
+      "title": "Int:あいしてるげーむ",
+      "kind": "original"
+    },
+    {
+      "title": "バブリン",
+      "kind": "original"
+    },
+    {
+      "title": "キスキツネ",
+      "kind": "original"
+    },
+    {
+      "title": "マザードラッグ",
+      "kind": "original"
+    },
+    {
+      "title": "絶望を翔る恒星",
+      "kind": "original"
+    },
+    {
+      "title": "密命",
+      "kind": "original"
+    },
+    {
+      "title": "魂にひそむ",
+      "kind": "original"
+    },
+    {
+      "title": "Int:寝息",
+      "kind": "original"
+    },
+    {
+      "title": "遺言",
+      "kind": "original"
+    },
+    {
+      "title": "Lemonade",
+      "kind": "original"
+    },
+    {
+      "title": "風編み鳥",
+      "kind": "original"
+    },
+    {
+      "title": "涙の薫りがする",
+      "kind": "original"
+    },
+    {
+      "title": "生と詩",
+      "kind": "original"
+    },
+    {
+      "title": "うたかたよいかないで",
+      "kind": "original"
+    },
+    {
+      "title": "ララ",
+      "kind": "original"
+    },
+    {
+      "title": "提灯暗航",
+      "kind": "original"
+    },
+    {
+      "title": "会いたいボクラ",
+      "kind": "original"
+    },
+    {
+      "title": "水たまりロンド",
+      "kind": "original"
+    },
+    {
+      "title": "こだましがみ",
+      "kind": "original"
+    },
+    {
+      "title": "キリカ",
+      "kind": "original"
+    },
+    {
+      "title": "パラソムニア",
+      "kind": "original"
+    },
+    {
+      "title": "ユメミテル",
+      "kind": "original"
+    },
+    {
+      "title": "花れ話れ",
+      "kind": "original"
+    },
+    {
+      "title": "ヒメとヒナが耳掃除してあげるっ！",
+      "kind": "original"
+    },
+    {
+      "title": "ヒメとヒナがマッサージしてあげるっ！",
+      "kind": "original"
+    },
+    {
+      "title": "一緒に図書室で勉強しよっ！",
+      "kind": "original"
+    },
+    {
+      "title": "元気が出ないとき、泣きたくなった時に見てね",
+      "kind": "original"
+    },
+    {
+      "title": "しゅわしゅわ炭酸ヘッドスパとシャンプーで癒しのひと時を",
+      "kind": "original"
+    },
+    {
+      "title": "5分で寝落ちできる睡眠導入ささやきだよ🌙",
+      "kind": "original"
+    },
+    {
+      "title": "ヒメヒナにゃんこがあいうえお順に褒めまくってたまに罵倒するニャ",
+      "kind": "original"
+    },
+    {
+      "title": "ヒビカセ",
+      "kind": "cover"
+    },
+    {
+      "title": "QUEEN",
+      "kind": "cover"
+    },
+    {
+      "title": "デビルじゃないもん",
+      "kind": "cover"
+    },
+    {
+      "title": "酔いどれ知らず",
+      "kind": "cover"
+    },
+    {
+      "title": "天ノ弱 ～Ballade ver.～",
+      "kind": "cover"
+    },
+    {
+      "title": "CH4NGE",
+      "kind": "cover"
+    },
+    {
+      "title": "偽物人間40号",
+      "kind": "cover"
+    },
+    {
+      "title": "エゴロック",
+      "kind": "cover"
+    },
+    {
+      "title": "天樂",
+      "kind": "cover"
+    },
+    {
+      "title": "ノンブレス・オブリージュ (HIMEHINA ver.)",
+      "kind": "cover"
+    },
+    {
+      "title": "夢のおわりの菊の花",
+      "kind": "original"
+    },
+    {
+      "title": "神喰姫",
+      "kind": "original"
+    },
+    {
+      "title": "WWW",
+      "kind": "original"
+    },
+    {
+      "title": "棄てられた鉄の王国",
+      "kind": "original"
+    },
+    {
+      "title": "パラソムニア",
+      "kind": "original"
+    },
+    {
+      "title": "GOLDEN",
+      "kind": "original"
+    },
+    {
+      "title": "Hello, Mic.",
+      "kind": "original"
+    },
+    {
+      "title": "Hello, Hologram",
+      "kind": "original"
+    },
+    {
+      "title": "不機嫌なスリーカード",
+      "kind": "original"
+    },
+    {
+      "title": "ナンダロウナ・フンドランド",
+      "kind": "original"
+    },
+    {
+      "title": "One-Way",
+      "kind": "original"
+    },
+    {
+      "title": "ハレ",
+      "kind": "original"
+    },
+    {
+      "title": "人間界不適合者",
+      "kind": "original"
+    },
+    {
+      "title": "提灯暗航",
+      "kind": "original"
+    },
+    {
+      "title": "未来は軌跡のキスの先",
+      "kind": "original"
+    },
+    {
+      "title": "会えないボクラ",
+      "kind": "original"
+    },
+    {
+      "title": "会いたいボクラ",
+      "kind": "original"
+    },
+    {
+      "title": "閃光花火",
+      "kind": "original"
+    },
+    {
+      "title": "Out:夢の跡",
+      "kind": "original"
+    },
+    {
+      "title": "劣等上等",
+      "kind": "cover"
+    },
+    {
+      "title": "アンノウン・マザーグース",
+      "kind": "cover"
+    },
+    {
+      "title": "ヴィラン",
+      "kind": "cover"
+    },
+    {
+      "title": "アスノヨゾラ哨戒班",
+      "kind": "cover"
+    },
+    {
+      "title": "それがあなたの幸せとしても",
+      "kind": "cover"
+    },
+    {
+      "title": "命に嫌われている",
+      "kind": "cover"
+    },
+    {
+      "title": "ボッカデラベリタ",
+      "kind": "cover"
+    },
+    {
+      "title": "廻廻奇譚",
+      "kind": "cover"
+    },
+    {
+      "title": "ヴァンパイア",
+      "kind": "cover"
+    },
+    {
+      "title": "踊",
+      "kind": "cover"
+    },
+    {
+      "title": "相対二等心",
+      "kind": "original"
+    },
+    {
+      "title": "黙劇",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Hope",
+      "kind": "original"
+    },
+    {
+      "title": "キリカ",
+      "kind": "original"
+    },
+    {
+      "title": "Mr.VIRTUALIZER",
+      "kind": "original"
+    },
+    {
+      "title": "相思相愛リフレクション",
+      "kind": "original"
+    },
+    {
+      "title": "3分ガール",
+      "kind": "original"
+    },
+    {
+      "title": "Int:抜ケ駆ケ07＆11",
+      "kind": "original"
+    },
+    {
+      "title": "ボクラハ＆ナイデ",
+      "kind": "original"
+    },
+    {
+      "title": "Int:待宵のプラハ",
+      "kind": "original"
+    },
+    {
+      "title": "氷少女と陥落街",
+      "kind": "original"
+    },
+    {
+      "title": "Int:入電「ｵｼﾘﾌﾘﾌﾘ」",
+      "kind": "original"
+    },
+    {
+      "title": "フリコドウル",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Farewell",
+      "kind": "original"
+    },
+    {
+      "title": "テト",
+      "kind": "original"
+    },
+    {
+      "title": "流れ行く命",
+      "kind": "original"
+    },
+    {
+      "title": "こだましがみ",
+      "kind": "original"
+    },
+    {
+      "title": "Int:雨ノチハレリ",
+      "kind": "original"
+    },
+    {
+      "title": "水たまりロンド",
+      "kind": "original"
+    },
+    {
+      "title": "あどけない世界に止まない歌を",
+      "kind": "original"
+    },
+    {
+      "title": "約束の血",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Existence",
+      "kind": "original"
+    },
+    {
+      "title": "藍の華",
+      "kind": "original"
+    },
+    {
+      "title": "ヒトガタRock",
+      "kind": "original"
+    },
+    {
+      "title": "ヒバリ(Laugh-In)",
+      "kind": "original"
+    },
+    {
+      "title": "ライライラビットテイル",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Electron",
+      "kind": "original"
+    },
+    {
+      "title": "琥珀の身体(Message-In)",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Honey",
+      "kind": "original"
+    },
+    {
+      "title": "溺れるほど愛した花",
+      "kind": "original"
+    },
+    {
+      "title": "夢景色",
+      "kind": "original"
+    },
+    {
+      "title": "うたかたよいかないで(Message-In)",
+      "kind": "original"
+    },
+    {
+      "title": "Int:Dream Away",
+      "kind": "original"
+    },
+    {
+      "title": "ララ",
+      "kind": "original"
+    },
+    {
+      "title": "Int:NamidaGanges",
+      "kind": "original"
+    },
+    {
+      "title": "アダムとマダム",
+      "kind": "original"
+    },
+    {
+      "title": "ヒトガタ",
+      "kind": "original"
+    },
+    {
+      "title": "Int:What i am",
+      "kind": "original"
+    },
+    {
+      "title": "My Dear",
+      "kind": "original"
+    },
+    {
+      "title": "フランケンシュタインの怪物",
+      "kind": "original"
+    },
+    {
+      "title": "V",
+      "kind": "original"
+    },
+    {
+      "title": "キスキツネ",
+      "kind": "original"
+    },
+    {
+      "title": "LADY CRAZY",
+      "kind": "original"
+    },
+    {
+      "title": "涙の薫りがする",
+      "kind": "original"
+    },
+    {
+      "title": "ヒトガタ/愛包ダンスホール",
+      "kind": "original"
+    },
+    {
+      "title": "愛包ダンスホール",
+      "kind": "original"
+    },
+    {
+      "title": "Raise your voice!",
+      "kind": "original"
+    },
+    {
+      "title": "空っぽの箱庭",
+      "kind": "original"
+    },
+    {
+      "title": "マザードラッグ",
+      "kind": "original"
+    },
+    {
+      "title": "WWW",
+      "kind": "original"
+    },
+    {
+      "title": "うたかたよいかないで　～Xmas Version～",
+      "kind": "original"
+    },
+    {
+      "title": "会いたいボクラ",
+      "kind": "original"
+    },
+    {
+      "title": "不機嫌なスリーカード",
+      "kind": "original"
+    },
+    {
+      "title": "Hello, Hologram",
+      "kind": "original"
+    },
+    {
+      "title": "花れ話れ",
+      "kind": "original"
+    },
+    {
+      "title": "Resistance!",
+      "kind": "original"
+    },
+    {
+      "title": "流れ行く命",
+      "kind": "original"
+    },
+    {
+      "title": "相思相愛リフレクション",
+      "kind": "original"
+    },
+    {
+      "title": "キセキ色",
+      "kind": "original"
+    },
+    {
+      "title": "ユメミテル",
+      "kind": "original"
+    },
+    {
+      "title": "水たまりロンド",
+      "kind": "original"
+    },
+    {
+      "title": "Mr.VIRTUALIZER",
+      "kind": "original"
+    },
+    {
+      "title": "琥珀の身体",
+      "kind": "original"
+    },
+    {
+      "title": "うたかたよいかないで",
+      "kind": "original"
+    },
+    {
+      "title": "ヒバリ",
+      "kind": "original"
+    },
+    {
+      "title": "ヒトガタ",
+      "kind": "original"
+    }
+  ]
+}

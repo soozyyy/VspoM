@@ -11,6 +11,10 @@ part of 'main.dart';
 // Each page (VSPO!, HIMEHINA) has its own playlists: same storage key, a
 // "page" field per playlist. Playlists saved before HIMEHINA existed have
 // none and are VSPO!'s.
+//
+// Feature 10: HIMEHINA's "Originals" and "Covers" (_lockedPlaylists). Saved
+// like any playlist, so a drag reorder sticks, but locked: Song.kind decides
+// what's in them (_syncLockedPlaylists); no rename, delete, add or remove.
 
 class Playlist {
   Playlist({
@@ -18,29 +22,44 @@ class Playlist {
     required this.name,
     required this.videoIds,
     this.page = AppPage.vspo,
+    this.locked = false,
   });
 
   final String id;
   String name;
   List<String> videoIds;
   final AppPage page;
+  final bool locked;
 
   factory Playlist.fromJson(Map<String, dynamic> json) => Playlist(
         id: json['id'] as String,
         name: json['name'] as String,
         videoIds: List<String>.from(json['videoIds'] as List<dynamic>),
         page: json['page'] == 'himehina' ? AppPage.himehina : AppPage.vspo,
+        locked: json['locked'] == true,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'name': name, 'videoIds': videoIds, 'page': page.name};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'videoIds': videoIds,
+        'page': page.name,
+        if (locked) 'locked': true,
+      };
 }
+
+// id -> (name, Song.kind). Fixed ids, so each is created once.
+const _lockedPlaylists = {
+  'himehina-originals': ('Originals', 'original'),
+  'himehina-covers': ('Covers', 'cover'),
+};
 
 // Saved in this browser's localStorage: playlists made on the website stay
 // in that browser and don't sync with the app or other browsers.
 const _playlistsKey = 'playlists';
 
-Future<List<Playlist>> _loadPlaylists() async {
+// null = saved playlists exist but couldn't be read.
+Future<List<Playlist>?> _loadPlaylists() async {
   try {
     final raw = _storeGet(_playlistsKey);
     if (raw == null) return [];
@@ -49,7 +68,7 @@ Future<List<Playlist>> _loadPlaylists() async {
         .map((e) => Playlist.fromJson(e as Map<String, dynamic>))
         .toList();
   } catch (_) {
-    return [];
+    return null;
   }
 }
 
@@ -66,6 +85,59 @@ extension _Playlists on _PlaylistScreenState {
   List<int> _playlistIndices(Playlist p) {
     final ids = _indexById;
     return [for (final id in p.videoIds) if (ids[id] != null) ids[id]!];
+  }
+
+  // Brings the locked playlists in line with the catalog: creates them,
+  // drops songs whose kind changed, appends new ones at the end (the user's
+  // order stays). Songs not in the catalog are kept hidden, like any
+  // playlist. Skipped while no HIMEHINA song has a kind yet (a catalog from
+  // before the scraper added it), which would otherwise empty them.
+  void _syncLockedPlaylists() {
+    final himehina = [
+      for (final s in _catalog)
+        if (s.page == AppPage.himehina) s,
+    ];
+    if (!himehina.any((s) => s.kind != null)) return;
+    final kindById = {for (final s in himehina) s.videoId: s.kind};
+    final changes = <void Function()>[];
+    for (final MapEntry(key: id, value: (name, kind))
+        in _lockedPlaylists.entries) {
+      final i = _playlists.indexWhere((p) => p.id == id);
+      final old = i < 0 ? const <String>[] : _playlists[i].videoIds;
+      final keep = [
+        for (final v in old)
+          if (!kindById.containsKey(v) || kindById[v] == kind) v,
+      ];
+      final have = keep.toSet();
+      final ids = [
+        ...keep,
+        for (final s in himehina)
+          if (s.kind == kind && !have.contains(s.videoId)) s.videoId,
+      ];
+      if (i < 0) {
+        changes.add(() => _playlists.add(Playlist(
+              id: id,
+              name: name,
+              videoIds: ids,
+              page: AppPage.himehina,
+              locked: true,
+            )));
+      } else if (!listEquals(ids, old) || _playlists[i].name != name) {
+        // In place, so an open playlist screen sees it too.
+        final p = _playlists[i];
+        changes.add(() => p
+          ..videoIds = ids
+          ..name = name);
+      }
+    }
+    // Nothing changed: don't rewrite storage.
+    if (changes.isNotEmpty) {
+      _editPlaylists(() {
+        for (final c in changes) {
+          c();
+        }
+      });
+    }
   }
 
   // Plays `indices` in this exact order from `start`, looping (see _inOrder
@@ -135,7 +207,13 @@ extension _Playlists on _PlaylistScreenState {
   // ---- Playlists tab (footer) ----
 
   Widget _buildPlaylistsTab() {
-    final mine = [for (final p in _playlists) if (p.page == _page.value) p];
+    // Locked ones (Originals, Covers) pinned on top.
+    final mine = [
+      for (final p in _playlists)
+        if (p.page == _page.value && p.locked) p,
+      for (final p in _playlists)
+        if (p.page == _page.value && !p.locked) p,
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
       children: [
@@ -204,6 +282,9 @@ extension _Playlists on _PlaylistScreenState {
         '${indices.length} songs',
         style: TextStyle(color: Colors.grey.shade400, fontSize: 12.5),
       ),
+      trailing: p.locked
+          ? Icon(Icons.lock_outline, size: 18, color: Colors.grey.shade500)
+          : null,
       onTap: () => _openPlaylist(p),
     );
   }
@@ -224,42 +305,43 @@ extension _Playlists on _PlaylistScreenState {
       appBar: AppBar(
         title: Text(p.name),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              if (v == 'rename') {
-                final name = await _askName('Rename playlist', initial: p.name);
-                if (name != null && name.isNotEmpty) {
-                  _editPlaylists(() => p.name = name);
+          if (!p.locked)
+            PopupMenuButton<String>(
+              onSelected: (v) async {
+                if (v == 'rename') {
+                  final name = await _askName('Rename playlist', initial: p.name);
+                  if (name != null && name.isNotEmpty) {
+                    _editPlaylists(() => p.name = name);
+                  }
+                } else {
+                  final ok = await showDialog<bool>(
+                    context: routeContext,
+                    builder: (c) => AlertDialog(
+                      title: Text('Delete "${p.name}"?'),
+                      content: const Text('The songs stay in your library.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(c).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(c).pop(true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    _editPlaylists(() => _playlists.remove(p));
+                    if (routeContext.mounted) Navigator.of(routeContext).pop();
+                  }
                 }
-              } else {
-                final ok = await showDialog<bool>(
-                  context: routeContext,
-                  builder: (c) => AlertDialog(
-                    title: Text('Delete "${p.name}"?'),
-                    content: const Text('The songs stay in your library.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(c).pop(false),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(c).pop(true),
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  _editPlaylists(() => _playlists.remove(p));
-                  if (routeContext.mounted) Navigator.of(routeContext).pop();
-                }
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename')),
-              PopupMenuItem(value: 'delete', child: Text('Delete playlist')),
-            ],
-          ),
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'rename', child: Text('Rename')),
+                PopupMenuItem(value: 'delete', child: Text('Delete playlist')),
+              ],
+            ),
         ],
       ),
       body: _pcWidth(ReorderableListView.builder(
@@ -291,14 +373,15 @@ extension _Playlists on _PlaylistScreenState {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: Icon(Icons.close, color: Colors.grey.shade500),
-                  tooltip: 'Remove',
-                  onPressed: () => _editPlaylists(
-                    () => p.videoIds
-                        .remove(_catalog[indices[visible[i]]].videoId),
+                if (!p.locked)
+                  IconButton(
+                    icon: Icon(Icons.close, color: Colors.grey.shade500),
+                    tooltip: 'Remove',
+                    onPressed: () => _editPlaylists(
+                      () => p.videoIds
+                          .remove(_catalog[indices[visible[i]]].videoId),
+                    ),
                   ),
-                ),
                 // No reordering while searching: moving a song among only
                 // some of the songs has no clear meaning.
                 if (query.isEmpty)
@@ -357,26 +440,27 @@ extension _Playlists on _PlaylistScreenState {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _openAddSongs(p),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add songs'),
+          if (!p.locked) const SizedBox(height: 10),
+          if (!p.locked)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openAddSongs(p),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add songs'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _pushLive((c) => _buildAddChannel(p)),
-                  icon: const Icon(Icons.person_add_alt),
-                  label: const Text('Add channel'),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pushLive((c) => _buildAddChannel(p)),
+                    icon: const Icon(Icons.person_add_alt),
+                    label: const Text('Add channel'),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           if (!empty)
             Padding(
               padding: const EdgeInsets.only(top: 10),

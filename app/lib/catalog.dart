@@ -39,6 +39,10 @@ class Song {
   final String? addedAt;
   // Which side-drawer page the song belongs to: which file it came from.
   final AppPage page;
+  // HIMEHINA only: "original" or "cover", set by catalog-scraper/himehina.js
+  // from HIMEHINA's own playlists and himehina.jp. Null = not known; the
+  // song is then in neither locked playlist (_syncLockedPlaylists).
+  final String? kind;
 
   const Song({
     required this.videoId,
@@ -51,6 +55,7 @@ class Song {
     this.loudnessDb,
     this.addedAt,
     this.page = AppPage.vspo,
+    this.kind,
   });
 
   // Matches catalog.json as written by catalog-scraper/scrape.js:
@@ -75,6 +80,7 @@ class Song {
       loudnessDb: (json['loudnessDb'] as num?)?.toDouble(),
       addedAt: json['addedAt'] as String?,
       page: page,
+      kind: json['kind'] as String?,
     );
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -212,12 +213,18 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     _loadChangelog().then((entries) {
       if (mounted) setState(() => _changelog = entries);
     });
-    _loadPlaylists().then((lists) {
-      if (!mounted) return;
+    final playlistsReady = _loadPlaylists().then((lists) {
+      if (!mounted) return false;
       setState(() {
-        _playlists = lists;
+        _playlists = lists ?? [];
         _playlistsLoaded = true;
       });
+      return lists != null;
+    });
+    // Not when playlists.json couldn't be read: syncing saves, and would
+    // write over the user's playlists.
+    Future.wait([catalogReady, playlistsReady]).then((r) {
+      if (mounted && r[1] == true) _syncLockedPlaylists();
     });
     // Routed straight into the same _next()/_previous() the mini-player
     // buttons use — no separate sequencing logic, so a lock-screen skip and
