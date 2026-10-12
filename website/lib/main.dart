@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -164,19 +165,25 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     // Repaints so the suggestions dropdown appears/disappears as the search
     // field gains/loses focus (see _suggestions / _buildSuggestions below).
     _searchFocusNode.addListener(() => setState(() {}));
-    _loadCatalog().then((songs) {
+    final catalogReady = _loadCatalog().then((songs) {
       if (!mounted) return;
       setState(() {
         _catalog = songs;
         _loadingCatalog = false;
       });
     });
-    _loadPlaylists().then((lists) {
-      if (!mounted) return;
+    final playlistsReady = _loadPlaylists().then((lists) {
+      if (!mounted) return false;
       setState(() {
-        _playlists = lists;
+        _playlists = lists ?? [];
         _playlistsLoaded = true;
       });
+      return lists != null;
+    });
+    // Not when the saved playlists couldn't be read: syncing saves, and would
+    // write over the user's playlists.
+    Future.wait([catalogReady, playlistsReady]).then((r) {
+      if (mounted && r[1] == true) _syncLockedPlaylists();
     });
     _progressTimer = Timer.periodic(
       const Duration(milliseconds: 500),
