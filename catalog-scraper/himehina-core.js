@@ -48,6 +48,76 @@ export function songKey(title) {
     .replace(/[\s\p{P}\p{S}]/gu, '');
 }
 
+// ---- Original or cover ----
+// Two sources, both HIMEHINA's own: which channel playlist a video is in
+// (ORIGINAL MUSIC / COVER MUSIC), and the tracklists on himehina.jp's
+// discography pages, which credit the original artist on covers
+// ('08. エゴロック by すりぃ') and nothing on originals ('14. テト').
+// Topic-only songs are only on the site. Nothing is ever guessed: a song
+// neither source knows keeps its old label, and a song they disagree on
+// gets none.
+
+// A discography page's HTML as trimmed, non-empty text lines.
+export function htmlToLines(html) {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>|<\/(p|div|li|h\d|dd|dt|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+// One album/single page (from htmlToLines) -> [{title, kind}].
+// Albums: numbered tracks, 'by' = cover. Singles have no tracklist: the
+// title is the line after '2024.11.15 Release'. Only the album and single
+// categories are read (not Blu-ray), and live albums are skipped, since
+// setlists list covers without 'by'.
+export function parseReleasePage(lines) {
+  const r = lines.findIndex((l) => /^\d{4}\.\d{1,2}\.\d{1,2}\s*Release$/i.test(l));
+  if (r < 0 || /\bLIVE\b/.test(lines[r + 1] ?? '')) return [];
+  const tracks = [];
+  for (const l of lines) {
+    const m = l.match(/^\d{1,2}\s*[.．]\s*(.+)$/);
+    if (!m) continue;
+    const [title, by] = m[1].split(/\s+by\s+/i);
+    tracks.push({
+      title: title
+        .replace(/\s+(田中ヒメ|鈴木ヒナ|HIMEHINA)(\s*\(HIMEHINA\))?$/, '')
+        .replace(/\(\s*(ヒメ|ヒナ)\s*ver\.?\s*\)/i, (_, who) => ` ( ver.${who === 'ヒメ' ? 'HIME' : 'HINA'} )`),
+      kind: by ? 'cover' : 'original',
+    });
+  }
+  if (tracks.length) return tracks;
+  return lines[r + 1] ? [{ title: lines[r + 1], kind: 'original' }] : [];
+}
+
+// Adds {title, kind} finds to a songKey -> 'original' | 'cover' | 'conflict' map.
+export function addKinds(map, finds) {
+  for (const { title, kind } of finds) {
+    const key = songKey(title);
+    if (!key) continue;
+    const cur = map.get(key);
+    map.set(key, cur && cur !== kind ? 'conflict' : kind);
+  }
+  return map;
+}
+
+// The label for one song: both sources agree, or only one knows. undefined
+// = nobody knows (keep the old label); null = they disagree (no label).
+export function decideKind(key, playlistKinds, siteKinds) {
+  const a = playlistKinds.get(key);
+  const b = siteKinds?.get(key);
+  if (a === 'conflict' || b === 'conflict' || (a && b && a !== b)) return null;
+  return a ?? b;
+}
+
 const RANK = { channel: 0, topic: 1, manual: -1 };
 
 /**
@@ -55,13 +125,15 @@ const RANK = { channel: 0, topic: 1, manual: -1 };
  * a manual include beats a video on their channel, which beats a Topic
  * upload. Songs never disappear just because a run didn't see them.
  *
- * found: [{videoId, title, singer, source}] in the order they were read.
+ * found: [{videoId, title, singer, source, kind?}] in the order they were read
+ *        (kind: which channel playlist it came from).
  * existing: the current himehina.json entries ([] on the first run).
  * opts: {today, firstRun, exclude: Set<videoId>, titles: {videoId: title},
- *        avatars: {duo|hime|hina: url}}
+ *        avatars: {duo|hime|hina: url},
+ *        siteKinds: addKinds() map from himehina.jp, or null if it failed}
  */
 export function mergeCatalog(found, existing, opts) {
-  const { today, firstRun, exclude, titles, avatars } = opts;
+  const { today, firstRun, exclude, titles, avatars, siteKinds = null } = opts;
   const singerOf = (e) =>
     Object.keys(SINGERS).find((k) => SINGERS[k].artistSlug === e.artistSlug) ?? 'duo';
   const candidates = [
@@ -70,6 +142,12 @@ export function mergeCatalog(found, existing, opts) {
     ...existing.map((e) => ({ ...e, singer: singerOf(e), source: e.source ?? 'channel', old: e })),
     ...found,
   ].filter((c) => !exclude.has(c.videoId));
+  const playlistKinds = addKinds(
+    new Map(),
+    found
+      .filter((c) => c.kind && !exclude.has(c.videoId))
+      .map((c) => ({ title: titles[c.videoId] ?? c.title, kind: c.kind })),
+  );
 
   const best = new Map(); // key -> candidate
   const oldByKey = new Map(); // key -> existing entry with that key
@@ -96,6 +174,10 @@ export function mergeCatalog(found, existing, opts) {
       source: c.source,
     };
     const prev = oldByKey.get(key);
+    const kind = decideKind(key, playlistKinds, siteKinds);
+    const finalKind = kind === undefined ? (c.old ?? prev)?.kind : kind;
+    if (finalKind) entry.kind = finalKind;
+    else delete entry.kind;
     if (!c.old) {
       // A better version of a song we already had (e.g. an MV replacing the
       // Topic audio) keeps the old date, so it isn't announced as new again.

@@ -13,12 +13,22 @@
 //   titles   {videoId: title}   use this title instead
 //   include  [{videoId, title, singer: duo|hime|hina}]  add by hand
 //
+// Each song is also labelled "kind": "original" | "cover" from the channel
+// playlist it's in and himehina.jp's discography tracklists, saved in
+// himehina-site.json (see himehina-core.js and himehina-site-snippet.js). The
+// app builds its Originals / Covers playlists from that.
+//
 // Every run merges into the existing himehina.json; songs are never removed
 // because a run missed them. New songs get "addedAt" (today) so the app
 // announces them, except on the very first run, which is the starting list.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { parseChannelTitle, parseTopicTitle, mergeCatalog } from './himehina-core.js';
+import {
+  parseChannelTitle,
+  parseTopicTitle,
+  mergeCatalog,
+  addKinds,
+} from './himehina-core.js';
 import { fetchLoudnessDb } from './loudness.js';
 
 const OUT = 'himehina.json';
@@ -85,6 +95,22 @@ async function fetchPlaylist(listId) {
   return out;
 }
 
+// himehina.jp's tracklists, saved in himehina-site.json -> songKey -> kind
+// map, or null if the file is missing or broken (then every song keeps the
+// label it had). The site blocks scripts with a bot check, so the file is
+// made in a real browser with himehina-site-snippet.js.
+const SITE_FILE = 'himehina-site.json';
+function readSiteKinds() {
+  try {
+    const { updated, tracks } = JSON.parse(readFileSync(SITE_FILE, 'utf-8'));
+    console.log(`${SITE_FILE}: ${tracks.length} tracks from himehina.jp (saved ${updated})`);
+    return addKinds(new Map(), tracks);
+  } catch (err) {
+    console.warn(`${SITE_FILE}: ${err.message}. Keeping each song's previous original/cover label.`);
+    return null;
+  }
+}
+
 // Channel profile picture, or null (the app falls back to a song thumbnail).
 async function fetchAvatar(channelPath) {
   try {
@@ -101,12 +127,12 @@ async function main() {
   const existing = firstRun ? [] : JSON.parse(readFileSync(OUT, 'utf-8'));
 
   const found = [];
-  for (const id of sources.channelPlaylists) {
+  for (const [kind, id] of Object.entries(sources.channelPlaylists)) {
     const items = await fetchPlaylist(id);
-    console.log(`Channel playlist ${id}: ${items.length} videos`);
+    console.log(`Channel playlist ${kind} (${id}): ${items.length} videos`);
     for (const [videoId, raw] of items) {
       const p = parseChannelTitle(raw);
-      if (p) found.push({ videoId, ...p, source: 'channel' });
+      if (p) found.push({ videoId, ...p, source: 'channel', kind });
     }
   }
   for (const [singer, channelId] of Object.entries(sources.topicChannels)) {
@@ -131,13 +157,30 @@ async function main() {
     ),
   };
 
+  const siteKinds = readSiteKinds();
   const tracks = mergeCatalog(found, existing, {
     today: TODAY,
     firstRun,
     exclude: new Set(Object.keys(sources.exclude ?? {})),
     titles: sources.titles ?? {},
     avatars,
+    siteKinds,
   });
+  const unlabelled = tracks.filter((t) => !t.kind);
+  if (unlabelled.length) {
+    console.warn(
+      `\nNo original/cover label (sources disagree or don't list it), so it's in neither playlist:\n` +
+        unlabelled.map((t) => `  ${t.title} (${t.videoId})`).join('\n'),
+    );
+    // Topic-only songs are labelled only by the site's tracklists.
+    if (unlabelled.some((t) => t.source === 'topic')) {
+      console.warn(
+        `\nA new album or single? Refresh ${SITE_FILE}: open himehina.jp in your browser, ` +
+          `paste himehina-site-snippet.js into the console (F12), save the downloaded file ` +
+          `over catalog-scraper/${SITE_FILE}, then run npm run himehina again.`,
+      );
+    }
+  }
 
   // Same loudness pass as scrape.js: only songs without a value yet.
   const todo = tracks.filter((t) => typeof t.loudnessDb !== 'number');

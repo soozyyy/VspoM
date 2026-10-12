@@ -7,7 +7,7 @@
 **A background music player for VSPO! and HIMEHINA songs on Android.**<br>
 Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.22-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.23-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -24,6 +24,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 - **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
 - **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
+- **Originals and Covers** (HIMEHINA page): two ready-made playlists that fill themselves as new songs arrive. Reorder them as you like; they can't be edited or deleted.
 - **Lock-screen and notification controls**: Previous, Play/Pause, Next, plus song artwork and a draggable progress bar. Bluetooth, wired headphone and car buttons work too.
 - **Even volume**: quiet and loud uploads play at about the same level, even if you open the app with no signal.
 - **Always-fresh song list**: new songs appear as soon as the song list is refreshed, no app update needed. The next time you open the app, it shows you what's new.
@@ -93,7 +94,7 @@ git push
 
 The app picks up the pushed `catalog.json` on its next launch, no rebuild needed. If a scrape prints "No track cards", it saves `debug-screenshot.png` showing what the page served instead.
 
-The HIMEHINA page's list is `himehina.json`, built by `catalog-scraper/himehina.js` with no browser or API key. It reads the channel's ORIGINAL MUSIC and COVER MUSIC playlists and the three "- Topic" channels (YouTube's album uploads), keeps one upload per song (the channel's full video first, else the Topic audio; never Dance Videos, ShortMVs, live tracks or interludes), and merges into the existing file. One-off fixes go in `himehina-sources.json`. Run `npm run himehina`, then commit `himehina.json`. `npm run test:himehina` checks the song rules.
+The HIMEHINA page's list is `himehina.json`, built by `catalog-scraper/himehina.js` with no browser or API key. It reads the channel's ORIGINAL MUSIC and COVER MUSIC playlists and the three "- Topic" channels (YouTube's album uploads), keeps one upload per song (the channel's full video first, else the Topic audio; never Dance Videos, ShortMVs, live tracks or interludes), and merges into the existing file. Each song is also labelled `"kind": "original"` or `"cover"`, which the app's Originals / Covers playlists use: from the channel playlist it's in, and from the tracklists on himehina.jp's discography (covers are credited "Title by Artist"). himehina.jp blocks scripts with a bot check, so those tracklists are saved in `himehina-site.json`, made in a normal browser by pasting `himehina-site-snippet.js` into the console on himehina.jp; refresh it after a new album or single (the run tells you when). If the two sources disagree, or neither lists a song, it gets no label and the run prints it. One-off fixes go in `himehina-sources.json`. Run `npm run himehina`, then commit `himehina.json`. `npm run test:himehina` checks the song rules.
 
 ### Build from source
 
@@ -136,8 +137,10 @@ VspoM/
   catalog-scraper/
     scrape.js              # vspodex.app scraper (Playwright)
     himehina.js            # HIMEHINA scraper (plain YouTube pages)
-    himehina-core.js       # what counts as a song, merging (tested by himehina.test.js)
+    himehina-core.js       # what counts as a song, original/cover, merging (tested by himehina.test.js)
     himehina-sources.json  # HIMEHINA playlists, Topic channels, manual fixes
+    himehina-site.json     # himehina.jp tracklists (original/cover), saved from the browser
+    himehina-site-snippet.js # browser-console script that makes himehina-site.json
     loudness.js            # loudness extraction + shared player constants
     loudness.test.js       # volume-leveling checks (npm test = scraper checks, npm run test:app = APK build)
     catalog.json           # the VSPO! song list the app fetches

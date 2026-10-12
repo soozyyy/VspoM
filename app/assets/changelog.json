@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.0.23",
+    "date": "2026-10-12",
+    "notes": "New: Originals and Covers playlists on the HIMEHINA page.",
+    "details": [
+      "New Originals and Covers playlists at the top of the HIMEHINA page's Playlists tab, with a lock icon.",
+      "They're filled automatically, using HIMEHINA's own YouTube playlists and the track lists on their official website, and new songs are added by themselves.",
+      "Drag songs to reorder them, then shuffle, play in order or search like any playlist. They can't be renamed, deleted or edited by hand.",
+      "A song only goes in once it's known for sure whether it's an original or a cover."
+    ]
+  },
+  {
     "version": "1.0.22",
     "date": "2026-10-09",
     "notes": "New: a HIMEHINA page with all their songs, in its own colours.",
