@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.0.24",
+    "date": "2026-10-14",
+    "notes": "New: loop one song, with the loop button on the Queue tab.",
+    "details": [
+      "New loop button next to Next on the Queue tab: the current song plays over and over until you tap it again.",
+      "Next and Previous (in the app, on the lock screen and in the notification) still skip to another song, and that song loops too.",
+      "Loop is off each time you open the app."
+    ]
+  },
+  {
     "version": "1.0.23",
     "date": "2026-10-12",
     "notes": "New: Originals and Covers playlists on the HIMEHINA page.",
