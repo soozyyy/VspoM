@@ -1,9 +1,12 @@
-# Builds the PC website (website/, a Flutter web project) and publishes it
-# to GitHub Pages: https://soozyyy.github.io/VspoM/
+# Builds the PC website (website/, a Flutter web project) and pushes it to
+# the gh-pages branch of vspo-m/vspo-m.github.io: https://vspo-m.github.io
 #
 # Only runs for pushes to main that change website/ (or this file), so
 # website changes never trigger build-apk.yml and app changes never trigger
-# this. One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+# this.
+# One-time setup: a deploy key with write access on vspo-m/vspo-m.github.io,
+# its private half saved here as the Actions secret PAGES_DEPLOY_KEY; that
+# repo's Settings -> Pages -> Deploy from a branch -> gh-pages / (root).
 name: Deploy website
 
 on:
@@ -16,8 +19,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # One deploy at a time; a newer push replaces a queued one.
 concurrency:
@@ -25,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,20 +51,17 @@ jobs:
       - name: Check volume leveling logic
         run: flutter test
 
-      # --base-href: Pages serves the site under /VspoM/, not the domain root.
+      # vspo-m.github.io serves the site at the domain root.
       - name: Build
-        run: flutter build web --release --base-href /VspoM/
+        run: flutter build web --release --base-href /
 
-      - uses: actions/upload-pages-artifact@v3
+      # force_orphan: gh-pages keeps only the latest build, so the repo
+      # doesn't grow by a full site copy on every deploy.
+      - name: Publish to vspo-m.github.io
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: website/build/web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          deploy_key: ${{ secrets.PAGES_DEPLOY_KEY }}
+          external_repository: vspo-m/vspo-m.github.io
+          publish_branch: gh-pages
+          publish_dir: website/build/web
+          force_orphan: true

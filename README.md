@@ -11,7 +11,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
-[**⬇ Download APK**](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk) · [**🌐 Open the website**](https://soozyyy.github.io/VspoM/)
+[**⬇ Download APK**](https://github.com/soozyyy/VspoM/releases/download/latest/app-release.apk) · [**🌐 Open the website**](https://vspo-m.github.io/)
 
 </div>
 
@@ -44,7 +44,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 
 ## Website (PC)
 
-On a computer, open **[soozyyy.github.io/VspoM](https://soozyyy.github.io/VspoM/)** in your browser. Nothing to install. It has the same two pages as the app, VSPO! and HIMEHINA, with the same songs, shuffle, loop one song, search, artists, queue and playlists (including HIMEHINA's ready-made Originals and Covers), laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
+On a computer, open **[vspo-m.github.io](https://vspo-m.github.io/)** in your browser. Nothing to install. It has the same two pages as the app, VSPO! and HIMEHINA, with the same songs, shuffle, loop one song, search, artists, queue and playlists (including HIMEHINA's ready-made Originals and Covers), laid out for a big screen, and music keeps playing in a background tab. Press **Space** to play or pause.
 
 A few differences from the app:
 
@@ -120,7 +120,7 @@ Every push to `main` that touches `app/` runs `.github/workflows/build-apk.yml`.
 
 `website/` is a separate Flutter web project: its own copy of the app's code, changed freely without ever touching `app/`. App features are copied over by hand when they fit the website. Instead of `OverlayService.kt`, it plays songs with YouTube's IFrame Player API in an invisible player (`web/player.js`), and it keeps playlists in the browser's `localStorage`. Volume leveling uses the same catalog `loudnessDb` and the same -6 dB target, applied through the player's volume (`lib/level.dart`); songs quieter than the target can't be boosted there.
 
-Every push to `main` that touches `website/` runs `.github/workflows/deploy-website.yml`, which builds the site and publishes it to GitHub Pages. It never triggers an APK build, and app pushes never redeploy the website. The website has no version number. (One-time setup: Settings → Pages → Source: GitHub Actions.)
+Every push to `main` that touches `website/` runs `.github/workflows/deploy-website.yml`, which builds the site and pushes it to the `gh-pages` branch of [`vspo-m/vspo-m.github.io`](https://github.com/vspo-m/vspo-m.github.io), served at https://vspo-m.github.io. It never triggers an APK build, and app pushes never redeploy the website. The website has no version number. (One-time setup: a deploy key with write access on that repo, its private half saved in this repo as the `PAGES_DEPLOY_KEY` Actions secret; that repo's Settings → Pages → Deploy from a branch → `gh-pages`.)
 
 ```
 cd website
@@ -134,7 +134,7 @@ flutter run -d chrome          # local preview
 VspoM/
   .github/workflows/
     build-apk.yml          # build, sign, release, version.json
-    deploy-website.yml     # build the website, publish to GitHub Pages
+    deploy-website.yml     # build the website, push it to vspo-m.github.io
   catalog-scraper/
     scrape.js              # vspodex.app scraper (Playwright)
     himehina.js            # HIMEHINA scraper (plain YouTube pages)
