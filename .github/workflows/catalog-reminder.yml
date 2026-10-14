@@ -1,0 +1,54 @@
+# Weekly reminder to refresh the song lists (catalog.json / himehina.json).
+# The refresh is manual on the PC now, so nothing else reminds you.
+# Every Sunday ~6:00 Singapore time this opens a GitHub issue that
+# @mentions you, and GitHub emails it to you. No checkout, no build:
+# it doesn't touch the APK or the website.
+# Steps: Claude project doc "refresh-catalog-howto".
+name: Catalog reminder
+
+on:
+  schedule:
+    # 21:50 UTC Saturday = 05:50 Sunday Singapore. GitHub usually starts
+    # scheduled runs a few minutes late, so it lands around 6:00.
+    - cron: "50 21 * * 6"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open reminder issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          today=$(TZ=Asia/Singapore date +%Y-%m-%d)
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Refresh the catalog ($today)" \
+            --body-file - <<'EOF'
+          @soozyyy weekly reminder: refresh the song lists.
+
+          ```powershell
+          cd D:\VspoM\catalog-scraper
+          $env:PASS_COUNT=20; npm run scrape
+          npm run himehina
+          ```
+
+          If `npm run himehina` prints `A new album or single? Refresh himehina-site.json`,
+          refresh that file first (ask Claude: "refresh himehina-site.json"), then run
+          `npm run himehina` again.
+
+          Then push:
+
+          ```powershell
+          cd D:\VspoM
+          git add catalog-scraper/catalog.json catalog-scraper/himehina.json catalog-scraper/himehina-site.json
+          git commit -m "Refresh catalog"
+          git push
+          ```
+
+          You can close this issue once it's done.
+          EOF
+          
