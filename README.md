@@ -7,7 +7,7 @@
 **A background music player for VSPO! and HIMEHINA songs on Android.**<br>
 Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.23-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.24-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -22,6 +22,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 - **Shuffle everything**, or just one artist, or just your search results. It loops forever.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
 - **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
+- **Loop one song**: tap the loop button next to Next on the Queue tab to play the current song over and over. Next and Previous still skip, and the new song loops too.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
 - **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
 - **Originals and Covers** (HIMEHINA page): two ready-made playlists that fill themselves as new songs arrive. Reorder them as you like; they can't be edited or deleted.

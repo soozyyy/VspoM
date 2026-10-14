@@ -182,6 +182,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   double? _dragValueSeconds; // non-null while the user is actively dragging
   Timer? _progressTimer;
   bool _autoAdvancing = false;
+  // Loop this song: at the end, jump back to 0:00 instead of moving on.
+  // Next/Previous still skip. Not saved, so it's off at every launch.
+  bool _loopOne = false;
 
   // Bumped on every setState (see override below). The full-screen Now
   // Playing page is a pushed route, and a route's builder doesn't re-run
@@ -577,7 +580,8 @@ class _PlaylistScreenState extends State<PlaylistScreen>
         _position.inMilliseconds >= _duration.inMilliseconds - 750;
     if (nearEnd && !_autoAdvancing && !paused) {
       _autoAdvancing = true;
-      await _next();
+      // Seek, not reload, so no ad plays between loops.
+      await (_loopOne ? _seekTo(Duration.zero) : _next());
       _autoAdvancing = false;
     }
   }
@@ -1293,6 +1297,8 @@ class _PlaylistScreenState extends State<PlaylistScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Balances the loop button so Play/Pause stays centred.
+                const SizedBox(width: 48),
                 IconButton(
                   iconSize: 40,
                   icon: const Icon(Icons.skip_previous, color: Colors.white),
@@ -1315,9 +1321,29 @@ class _PlaylistScreenState extends State<PlaylistScreen>
                   icon: const Icon(Icons.skip_next, color: Colors.white),
                   onPressed: _next,
                 ),
+                IconButton(
+                  icon: Icon(
+                    Icons.repeat_one,
+                    color: _loopOne
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey.shade600,
+                  ),
+                  tooltip: 'Loop this song',
+                  isSelected: _loopOne,
+                  onPressed: () => setState(() => _loopOne = !_loopOne),
+                ),
               ],
             ),
           ),
+          if (_loopOne)
+            SliverToBoxAdapter(
+              child: Center(
+                child: Text(
+                  'Looping this song',
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
