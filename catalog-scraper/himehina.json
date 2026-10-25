@@ -668,7 +668,8 @@
     "artistAvatarUrl": "https://yt3.googleusercontent.com/nPHRhyl-fq_XwruRR5btA8_lafZKoc86TZBBDx6XjiclwI1qU51ejBG_wwj69CdWKyDyDmLM=s176-c-k-c0x00ffffff-no-rj",
     "source": "channel",
     "kind": "cover",
-    "addedAt": "2026-10-18"
+    "addedAt": "2026-10-18",
+    "loudnessDb": 9.92
   },
   {
     "videoId": "PiDc5IBYDPk",
