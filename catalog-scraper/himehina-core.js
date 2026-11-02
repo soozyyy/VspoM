@@ -33,7 +33,17 @@ export function parseTopicTitle(raw) {
   if (/^(Int|Introduction|Opening|Out)\s*[:：]/i.test(t)) return null;
   if (/\binst\.?$/i.test(t)) return null;
   if (/\((Message|Laugh)-In\)/i.test(t)) return null;
+  // A channel video that a release playlist also lists ('HIMEHINA『…』MV',
+  // '【期間限定】HIMEHINA『…』【LIVE…】'). Topic titles never use 『』.
+  if (/『.+』/.test(t)) return null;
   return t;
+}
+
+// The album/single playlists (OLAK5uy_…) on a "- Topic" channel's page, i.e.
+// its "Albums & Singles" row, newest first. YouTube only shows the newest
+// few; that's enough, since older songs are already in himehina.json.
+export function releasePlaylistIds(initialData) {
+  return [...new Set(JSON.stringify(initialData?.contents ?? {}).match(/OLAK5uy_[\w-]+/g) ?? [])];
 }
 
 // Same song = same key. Case, width, spaces and punctuation don't count, so

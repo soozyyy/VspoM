@@ -1,7 +1,7 @@
 // Builds himehina.json, the HIMEHINA page's song list, straight from YouTube.
 // HimeHina are one channel, so there's no vspodex-style site to read: this
-// takes their own song playlists plus the three "- Topic" channels (YouTube's
-// auto-uploads of their albums, which have every released song, covers too).
+// takes their own song playlists plus the albums and singles on the three
+// "- Topic" channels (YouTube's auto-uploads of their releases, covers too).
 // No browser, no API key, no npm packages: plain fetch of public pages.
 //
 // Usage (PowerShell):  cd catalog-scraper; npm run himehina
@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import {
   parseChannelTitle,
   parseTopicTitle,
+  releasePlaylistIds,
   mergeCatalog,
   addKinds,
 } from './himehina-core.js';
@@ -136,12 +137,24 @@ async function main() {
     }
   }
   for (const [singer, channelId] of Object.entries(sources.topicChannels)) {
-    // A channel's uploads playlist is its ID with UC -> UU.
-    const items = await fetchPlaylist(`UU${channelId.slice(2)}`);
-    console.log(`Topic (${singer}): ${items.length} videos`);
-    for (const [videoId, raw] of items) {
-      const title = parseTopicTitle(raw);
-      if (title) found.push({ videoId, title, singer, source: 'topic' });
+    // Topic channels have no uploads playlist any more (gone 2026-11), so read
+    // the releases on the channel page. A failure here only skips new songs
+    // from that channel: the merge keeps every song we already have.
+    try {
+      const { data } = await getInitialData(`https://www.youtube.com/channel/${channelId}?hl=ja`);
+      const lists = releasePlaylistIds(data);
+      if (!lists.length) throw new Error('no albums or singles on the channel page');
+      let n = 0;
+      for (const listId of lists) {
+        for (const [videoId, raw] of await fetchPlaylist(listId)) {
+          n++;
+          const title = parseTopicTitle(raw);
+          if (title) found.push({ videoId, title, singer, source: 'topic' });
+        }
+      }
+      console.log(`Topic (${singer}): ${lists.length} releases, ${n} videos`);
+    } catch (err) {
+      console.warn(`Topic (${singer}): ${err.message}. Skipped this run; its songs are kept.`);
     }
   }
   for (const m of sources.include ?? []) found.push({ ...m, source: 'manual' });

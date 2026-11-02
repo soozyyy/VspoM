@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   parseChannelTitle,
   parseTopicTitle,
+  releasePlaylistIds,
   songKey,
   mergeCatalog,
   htmlToLines,
@@ -35,6 +36,15 @@ assert.equal(parseTopicTitle('Opening：Remember the Tears - Live2024『涙の�
 assert.equal(parseTopicTitle('Out:夢の跡'), null);
 assert.equal(parseTopicTitle('LADY CRAZY inst.'), null);
 assert.equal(parseTopicTitle('琥珀の身体 (Message-In)'), null);
+assert.equal(parseTopicTitle('HIMEHINA『フランケンシュタインの怪物』MV'), null); // MV inside a single (2026-11-02)
+assert.equal(parseTopicTitle('【期間限定】HIMEHINA『こだましがみ』【LIVE2022アイタイボクラ 希織歌と時鐘】'), null);
+
+// Topic channel page -> release playlists (made-up IDs, real shape)
+assert.deepEqual(
+  releasePlaylistIds({ contents: { a: [{ contentId: 'OLAK5uy_aB-1' }, { url: '/playlist?list=OLAK5uy_cD_2' }, { contentId: 'OLAK5uy_aB-1' }] } }),
+  ['OLAK5uy_aB-1', 'OLAK5uy_cD_2'],
+);
+assert.deepEqual(releasePlaylistIds(null), []);
 
 // Keys
 assert.equal(songKey('Get Out!!'), songKey('Get out!!'));
