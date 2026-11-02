@@ -48,6 +48,7 @@ export function playerConstants(src) {
   };
   return {
     TARGET_OFFSET_DB: num('TARGET_OFFSET_DB'),
+    BOOST_THRESHOLD_DB: num('BOOST_THRESHOLD_DB'),
     MIN_GAIN: num('MIN_GAIN'),
     MAX_GAIN: num('MAX_GAIN'),
   };

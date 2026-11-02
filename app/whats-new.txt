@@ -1,1 +1,1 @@
-New: loop one song, with the loop button on the Queue tab.
+Louder: songs now play as loud as YouTube and Spotify.

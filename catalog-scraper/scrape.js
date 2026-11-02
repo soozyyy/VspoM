@@ -295,14 +295,16 @@ function reportLoudnessCoverage(tracks) {
   for (const t of tracks.values()) {
     if (typeof t.loudnessDb !== 'number') continue;
     const boostDb = consts.TARGET_OFFSET_DB - t.loudnessDb;
-    if (boostDb <= 0) continue; // at or above target: plain video.volume
+    // At/above target, or only slightly quiet: plain video.volume.
+    if (boostDb <= consts.BOOST_THRESHOLD_DB) continue;
     boosted.push(t);
     if (boostDb > maxBoostDb) clamped.push({ t, boostDb });
   }
 
   console.log(`\nLoudness coverage (target ${consts.TARGET_OFFSET_DB} dB, from ${path}):`);
   console.log(
-    `  ${boosted.length} of ${tracks.size} tracks are below target and use the Web Audio boost path.`,
+    `  ${boosted.length} of ${tracks.size} tracks are more than ${consts.BOOST_THRESHOLD_DB} dB ` +
+      'below target and use the Web Audio boost path.',
   );
   if (clamped.length === 0) {
     console.log(`  No track exceeds the +${maxBoostDb.toFixed(1)} dB boost cap.`);
