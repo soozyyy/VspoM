@@ -75,7 +75,7 @@ assert.equal(
 
 // --- 2-5. the shipping player logic ----------------------------------------
 
-let plan, boostGain, TARGET_OFFSET_DB, MAX_GAIN, kotlinPath;
+let plan, boostGain, TARGET_OFFSET_DB, BOOST_THRESHOLD_DB, MAX_GAIN, kotlinPath;
 
 function appChecks() {
   const player = readPlayerSource();
@@ -83,6 +83,7 @@ function appChecks() {
   const kotlin = player.src;
   const consts = playerConstants(kotlin);
   TARGET_OFFSET_DB = consts.TARGET_OFFSET_DB;
+  BOOST_THRESHOLD_DB = consts.BOOST_THRESHOLD_DB;
   MAX_GAIN = consts.MAX_GAIN;
   const { MIN_GAIN } = consts;
 
@@ -99,7 +100,7 @@ function appChecks() {
     throw new Error(`unbalanced braces after "${signature}"`);
   }
 
-  const CONSTS = `var MIN_GAIN=${MIN_GAIN}, MAX_GAIN=${MAX_GAIN}, TARGET_OFFSET_DB=${TARGET_OFFSET_DB};`;
+  const CONSTS = `var MIN_GAIN=${MIN_GAIN}, MAX_GAIN=${MAX_GAIN}, TARGET_OFFSET_DB=${TARGET_OFFSET_DB}, BOOST_THRESHOLD_DB=${BOOST_THRESHOLD_DB};`;
   /* eslint-disable no-new-func */
   plan = new Function('db', `${CONSTS} ${liftFunction('function plan(db)')} return plan(db);`);
   boostGain = new Function(
@@ -118,7 +119,23 @@ function appChecks() {
   assert.equal(plan(TARGET_OFFSET_DB + 6).mode, 'volume', 'louder than target -> video.volume');
   assert.equal(plan(TARGET_OFFSET_DB + 0.1).mode, 'volume', 'just above target -> video.volume');
   assert.equal(plan(TARGET_OFFSET_DB).mode, 'volume', 'exactly at target needs no boost');
-  assert.equal(plan(TARGET_OFFSET_DB - 3).mode, 'boost', 'quieter than target -> needs a gain node');
+  assert.equal(
+    plan(TARGET_OFFSET_DB - BOOST_THRESHOLD_DB - 1).mode,
+    'boost',
+    'clearly quieter than target -> needs a gain node',
+  );
+  // Only slightly quiet (up to and including the threshold): full volume,
+  // still no Web Audio.
+  assert.deepEqual(
+    plan(TARGET_OFFSET_DB - BOOST_THRESHOLD_DB / 2),
+    { mode: 'volume', target: 1 },
+    'slightly quiet -> full volume, no gain node',
+  );
+  assert.deepEqual(
+    plan(TARGET_OFFSET_DB - BOOST_THRESHOLD_DB),
+    { mode: 'volume', target: 1 },
+    'exactly at the threshold -> still no gain node',
+  );
 
   // The single most important case: no loudness must mean TOUCH NOTHING.
   // Applying a target of 1.0 here would overwrite YouTube's own normalization
@@ -138,7 +155,20 @@ function appChecks() {
 
   // --- 5. the whole point --------------------------------------------------
   close(outputLevel(TARGET_OFFSET_DB + 10), outputLevel(TARGET_OFFSET_DB + 1), 'loud and medium end up level');
-  close(outputLevel(TARGET_OFFSET_DB + 10), outputLevel(TARGET_OFFSET_DB - 3), 'loud and quiet end up level');
+  close(
+    outputLevel(TARGET_OFFSET_DB + 10),
+    outputLevel(TARGET_OFFSET_DB - BOOST_THRESHOLD_DB - 2),
+    'loud and quiet end up level',
+  );
+
+  // A slightly quiet song plays a little below the rest: never above, never
+  // more than BOOST_THRESHOLD_DB below.
+  const slight = outputLevel(TARGET_OFFSET_DB - BOOST_THRESHOLD_DB / 2);
+  const full = outputLevel(TARGET_OFFSET_DB);
+  assert.ok(
+    slight < full && slight >= full * Math.pow(10, -BOOST_THRESHOLD_DB / 20) - 1e-9,
+    'a slightly quiet song plays at most BOOST_THRESHOLD_DB below target',
+  );
 
   // A song too quiet to rescue must land BELOW the others, never above.
   const tooQuiet = TARGET_OFFSET_DB - 20 * Math.log10(MAX_GAIN) - 4;
@@ -213,7 +243,11 @@ if (plan && existsSync('catalog.json')) {
           `${clamped.map((s) => s.title).join(', ')}.`,
       );
     }
-    if (spreadDb >= 0.5) warn(`catalog playback spread is ${spreadDb.toFixed(2)} dB (guideline: under 0.5).`);
+    // Songs up to BOOST_THRESHOLD_DB short play that much quiet by design.
+    const maxSpreadDb = BOOST_THRESHOLD_DB + 0.5;
+    if (spreadDb >= maxSpreadDb) {
+      warn(`catalog playback spread is ${spreadDb.toFixed(2)} dB (guideline: under ${maxSpreadDb}).`);
+    }
 
     console.log(
       `catalog: ${withLoudness.length} songs, ${boosted.length} on the boost path ` +

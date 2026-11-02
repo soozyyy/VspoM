@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.0.25",
+    "date": "2026-11-02",
+    "notes": "Louder: songs now play as loud as YouTube and Spotify.",
+    "details": [
+      "Every song plays louder, at the same level as YouTube and Spotify's default setting.",
+      "Songs still play at about the same volume as each other. A few slightly quiet uploads play a little below the rest."
+    ]
+  },
+  {
     "version": "1.0.24",
     "date": "2026-10-14",
     "notes": "New: loop one song, with the loop button on the Queue tab.",

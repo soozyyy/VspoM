@@ -477,36 +477,32 @@ class OverlayService : Service() {
           // Which video this page load is for. See pageLoudnessDb().
           var expectedVideoId = $videoIdLiteral;
           // Calibration knob: the level every song is normalized to, in dB
-          // relative to YouTube's -14 LUFS reference. 0 would mean "match
-          // YouTube"; raise it toward 0 if the app feels too quiet, lower it
-          // if you want fewer songs on the boost path.
+          // relative to YouTube's -14 LUFS reference. 0 = -14 LUFS, the level
+          // YouTube itself plays at and Spotify's default ("Normal") setting.
+          // Lower it if the app ever feels too loud.
           //
-          // -6 is chosen, not arbitrary. A song only needs the Web Audio
-          // boost path when it is QUIETER than this target, and Web Audio is
-          // what causes the stutter — so a lower target means fewer songs can
-          // ever hit it. Measured on the real 344-song catalog:
+          // It was -6 (-20 LUFS) until v1.0.25, to keep songs off the Web
+          // Audio boost path, which was blamed for the stutter. The stutter
+          // turned out to come from debug builds (see
+          // claude/volume-normalizer-audit.md), so those 6 dB bought nothing.
+          var TARGET_OFFSET_DB = 0;
+          // A song quieter than target only takes the Web Audio boost path if
+          // it is MORE than this many dB short. Closer than that, it just
+          // plays at full volume, slightly quiet, with no Web Audio at all.
+          // Web Audio is the path that can stutter, so it's kept for songs
+          // where the boost is clearly audible. On the real 352-song catalog
+          // at offset 0:
           //
-          //     offset    app level   songs needing Web Audio   leveling
-          //        0      -14 LUFS         24  (7.0%)           1.89 dB
-          //       -6      -20 LUFS          2  (0.6%)           perfect
-          //
-          // It also buys headroom against FUTURE songs. Boost is capped at
-          // MAX_GAIN (+12 dB), so a song more than 12 dB below target can't
-          // reach it and plays slightly quiet. At offset 0 that bites at
-          // -26 LUFS and one song in the catalog already does; at -6 it
-          // bites at -32 LUFS, which nothing comes close to.
-          //
-          // Deliberately NOT set to the current quietest song (-13.93): that
-          // would zero out the boost path today and silently resurrect it the
-          // first time a quieter song is added, while costing 14 dB of
-          // loudness for a guarantee it can't keep.
-          var TARGET_OFFSET_DB = -6;
+          //     threshold   songs on Web Audio   slightly-quiet songs
+          //        0           24  (6.8%)              0
+          //        3           11  (3.1%)             13  (at most 3 dB)
+          var BOOST_THRESHOLD_DB = 3;
           // Bounds on what we'll do to any one song — these only catch
-          // garbage data. MAX_GAIN of 4.0 is +12 dB; see the headroom note
-          // above, and the catalog invariant in loudness.test.js that fails
-          // if any real song ever exceeds it.
+          // garbage data. MAX_GAIN of 5.0 is +14 dB, just enough for the
+          // quietest song in the catalog (-13.93) to reach target; the
+          // catalog check in loudness.test.js warns if a song ever needs more.
           var MIN_GAIN = 0.25;
-          var MAX_GAIN = 4.0;
+          var MAX_GAIN = 5.0;
 
           // Everything logs through here (tagged so it's easy to grep in
           // Logcat).
@@ -623,17 +619,22 @@ class OverlayService : Service() {
           //   'leave'  - no loudness known. Touch NOTHING: YouTube's own
           //              normalization is already on the element and stomping
           //              it is what caused the original volume problem.
-          //   'volume' - song needs turning DOWN. video.volume does that
-          //              natively, so NO Web Audio at all.
+          //   'volume' - song needs turning DOWN, or is at most
+          //              BOOST_THRESHOLD_DB too quiet and plays at full
+          //              volume. video.volume does both natively, so NO Web
+          //              Audio at all.
           //   'boost'  - song needs turning UP. video.volume caps at 1, so
           //              this is the only case that needs a gain node.
           //
-          // On the real 344-song catalog at offset -6 that's 342 'volume', 2
-          // 'boost' — 99% of playback never enters the Web Audio graph.
+          // On the real 352-song catalog that's 341 'volume', 11 'boost' — 97%
+          // of playback never enters the Web Audio graph.
           function plan(db) {
             if (db === null || !isFinite(db)) return { mode: 'leave', target: 1 };
             var target = Math.pow(10, (TARGET_OFFSET_DB - db) / 20);
-            return { mode: target <= 1 ? 'volume' : 'boost', target: target };
+            if (target <= 1) return { mode: 'volume', target: target };
+            // Only slightly quiet: full volume is worth more than the boost.
+            if (TARGET_OFFSET_DB - db <= BOOST_THRESHOLD_DB) return { mode: 'volume', target: 1 };
+            return { mode: 'boost', target: target };
           }
 
           // Gain for the boost path only. ytVol is whatever YouTube left on
@@ -740,7 +741,7 @@ class OverlayService : Service() {
                 // Web Audio means every load spike has to be absorbed by that
                 // buffer; if it isn't, the render thread fills the gap with
                 // silence and you hear a click. Latency is irrelevant for
-                // music, so trade it for headroom. Only reached on the ~7% of
+                // music, so trade it for headroom. Only reached on the ~3% of
                 // songs that need a boost at all.
                 window.__vspoAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
                 log('created AudioContext (latencyHint=playback), initial state=' + window.__vspoAudioCtx.state);
