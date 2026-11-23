@@ -7,7 +7,7 @@
 **A background music player for VSPO! and HIMEHINA songs on Android.**<br>
 Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with the screen off.
 
-[![Version](https://img.shields.io/badge/version-v1.0.25-blue)](https://github.com/soozyyy/VspoM/releases/latest)
+[![Version](https://img.shields.io/badge/version-v1.0.26-blue)](https://github.com/soozyyy/VspoM/releases/latest)
 [![APK size](https://img.shields.io/badge/APK-52%20MB-green)](https://github.com/soozyyy/VspoM/releases/latest)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-brightgreen?logo=android&logoColor=white)](#install)
 
@@ -21,7 +21,7 @@ Every VSPO! member song and every HIMEHINA song, shuffled and looping, even with
 - **Background playback.** Keeps playing with the screen off or while you use other apps.
 - **Shuffle everything**, or just one artist, or just your search results. It loops forever.
 - **Search** by song or artist, including romanized names (typing "yaku" finds 八雲べに).
-- **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue.
+- **Now Playing screen** with a big seek bar and an **Up Next** queue, in the **Queue** tab at the bottom. It also shows what plays when the queue loops. Tap any upcoming song to jump to it, or ✕ to take it out of the queue; the list slides smoothly as songs move on.
 - **Loop one song**: tap the loop button next to Next on the Queue tab to play the current song over and over. Next and Previous still skip, and the new song loops too.
 - **Browse by Artist**, ordered from senpai to kohai (JP by debut, then EN).
 - **Playlists**: make as many as you like from the **Playlists** tab. Add songs one at a time, or a whole channel at once, drag to reorder, search inside a playlist, then shuffle or play in order.
@@ -74,6 +74,8 @@ The VSPO! song list comes from [vspodex.app](https://www.vspodex.app)'s music pa
 ### How background playback works
 
 `OverlayService.kt` is a foreground service that attaches a plain `WebView` straight to the `WindowManager` as an invisible 1×1 `TYPE_APPLICATION_OVERLAY` window. That window isn't tied to the app's Activity, so backgrounding the app or turning off the screen never tears down its video surface, and the audio keeps going. Flutter drives it over one `MethodChannel` (`vspo_music/overlay`: `playVideo`, `pause`, `resume`, `seek`, `getPosition`, `stop`, and more). One `EventChannel` (`vspo_music/overlay_events`) carries lock-screen and hardware skip presses back up to Dart, which owns the shuffle order. A `MediaSessionCompat` powers the lock-screen and notification controls. There's no `just_audio`, `audio_service` or `youtube_explode_dart`.
+
+**Moving to the next song:** Dart polls `getPosition` every 500 ms and moves on (or loops) in a song's last second, or straight away if the video reports it has ended. The app never lets YouTube reach a song's real end: on the mobile site, YouTube then plays end-of-video ads and afterwards its own pick or an empty player, while the app would still show the old song.
 
 **Volume leveling:** each song's `loudnessDb` (read from YouTube's own watch page by the scraper) is stored in the catalog. The target is YouTube's own -14 LUFS reference (`TARGET_OFFSET_DB = 0`, the same level as Spotify's default). The injected script turns loud songs down with `video.volume`, and only boosts songs more than 3 dB too quiet (`BOOST_THRESHOLD_DB`) through Web Audio; slightly quiet ones just play at full volume. The level is decided once when a song starts and held there: a `volumechange` listener puts it straight back if YouTube moves it. If the catalog has no value for a song, the script reads the same `loudnessDb` from the YouTube page itself. `catalog-scraper/loudness.test.js` guards all of this; the APK build runs it strictly, the scraper only as warnings, so it can never stop new songs from arriving.
 

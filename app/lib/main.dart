@@ -182,6 +182,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   double? _dragValueSeconds; // non-null while the user is actively dragging
   Timer? _progressTimer;
   bool _autoAdvancing = false;
+  // The song before the current one. While the current song's page is
+  // still loading, getPosition still reads that song's page (_pollPosition).
+  String? _prevVideoId;
   // Loop this song: at the end, jump back to 0:00 instead of moving on.
   // Next/Previous still skip. Not saved, so it's off at every launch.
   bool _loopOne = false;
@@ -462,6 +465,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     }
     final songIndex = _playOrder[orderIndex];
     _playOrderIndex = orderIndex;
+    _prevVideoId = _currentSong?.videoId;
     setState(() {
       _currentSongIndex = songIndex;
       _playing = true;
@@ -561,28 +565,57 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     }
     if (!mounted || info == null) return;
 
+    // Still the previous song's page: the current one hasn't loaded yet.
+    // Its numbers (and its "ended") belong to the song before, so skip it.
+    final pageId = info['videoId'] as String?;
+    if (pageId != null &&
+        pageId == _prevVideoId &&
+        pageId != _currentSong?.videoId) {
+      return;
+    }
+
     final positionSeconds = (info['position'] as num?)?.toDouble() ?? 0.0;
     final durationSeconds = (info['duration'] as num?)?.toDouble() ?? 0.0;
     final paused = info['paused'] as bool? ?? _isPaused;
+    final ended = info['ended'] as bool? ?? false;
+    final ad = info['ad'] as bool? ?? false;
 
     setState(() {
       _position = Duration(milliseconds: (positionSeconds * 1000).round());
       if (durationSeconds > 0) {
         _duration = Duration(milliseconds: (durationSeconds * 1000).round());
       }
-      _isPaused = paused;
+      // A finished video reports paused. Keep the button as it was, so it
+      // doesn't flick to Play for the moment before the next song.
+      if (!ended) _isPaused = paused;
     });
 
-    // Auto-advance once the current song finishes, so shuffle-play-all keeps
-    // going (and loops via _playSongAt's own wraparound) without the user
-    // having to tap "next" manually every time.
+    // Move on (or loop) just before the song ends, so playback keeps going
+    // (and loops via _playSongAt's own wraparound). Never let YouTube reach
+    // the real end: there it plays end-of-video ads and then its own
+    // autoplay pick or an empty player, while the app kept showing the old
+    // song (claude/bug-wrong-song-shown.md). The window is the last 1 s
+    // and readings come every 500 ms, so at least two land in it. If the
+    // song is seen finished anyway (window missed), move on straight away:
+    // a finished video reports paused, which used to block this for good.
+    // Not during an ad, whose own end isn't the song's.
     final nearEnd = _duration.inMilliseconds > 0 &&
-        _position.inMilliseconds >= _duration.inMilliseconds - 750;
-    if (nearEnd && !_autoAdvancing && !paused) {
+        _position.inMilliseconds >= _duration.inMilliseconds - 1000;
+    if (!ad && (ended || (nearEnd && !paused)) && !_autoAdvancing) {
       _autoAdvancing = true;
-      // Seek, not reload, so no ad plays between loops.
-      await (_loopOne ? _seekTo(Duration.zero) : _next());
-      _autoAdvancing = false;
+      try {
+        if (_loopOne) {
+          // Seek, not reload, so no ad plays between loops.
+          await _seekTo(Duration.zero);
+          if (ended) await _overlayChannel.invokeMethod('resume');
+        } else {
+          await _next();
+        }
+      } catch (_) {
+        // The next reading tries again.
+      } finally {
+        _autoAdvancing = false;
+      }
     }
   }
 
@@ -596,6 +629,10 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     final currentSong = _currentSong;
 
     final visibleIndices = _visibleIndices;
+
+    // The Queue tab isn't built, so its animated list starts fresh (from the
+    // queue as it is then) next time it shows.
+    if (_tab != 1 || currentSong == null) _upNextShown = null;
 
     // Back on the Queue or Playlists tab goes to Library first, then exits.
     return PopScope(
@@ -1217,11 +1254,123 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   // doesn't build a 650-row list.
   static const _maxQueueRows = 50;
 
+  // Up Next as the animated list shows it (catalog indices). It runs one
+  // frame behind the real queue: _syncUpNext animates the difference, so
+  // rows that leave slide up and fade out, and rows that arrive (Previous)
+  // slide in and fade in. Null while the Queue tab isn't built.
+  List<int>? _upNextShown;
+  var _upNextKey = GlobalKey<SliverAnimatedListState>();
+  bool _upNextSyncQueued = false;
+  static const _queueAnim = Duration(milliseconds: 300);
+
+  // Brings the animated Up Next list in line with the queue. Only a change
+  // that keeps the remaining songs in the same order is animated (tap a
+  // song further down, Next, a song ending, X, Previous). A new order
+  // (shuffle, another playlist, the reshuffle at the end) just swaps the
+  // list in, as before.
+  void _syncUpNext() {
+    _upNextSyncQueued = false;
+    final shown = _upNextShown;
+    final list = _upNextKey.currentState;
+    if (!mounted || shown == null || list == null) return;
+    final target = _playOrder
+        .skip(_playOrderIndex + 1)
+        .take(_maxQueueRows)
+        .toList();
+    if (listEquals(shown, target)) return;
+    final shownSet = shown.toSet();
+    final targetSet = target.toSet();
+    final kept = [for (final s in shown) if (targetSet.contains(s)) s];
+    final keptInTarget = [for (final s in target) if (shownSet.contains(s)) s];
+    if (kept.isEmpty ||
+        !listEquals(kept, keptInTarget) ||
+        shownSet.length != shown.length ||
+        targetSet.length != target.length) {
+      setState(() {
+        _upNextShown = target;
+        _upNextKey = GlobalKey<SliverAnimatedListState>();
+      });
+      return;
+    }
+    // Leaving rows, bottom up so each index still points at the right row.
+    for (var i = shown.length - 1; i >= 0; i--) {
+      final song = shown[i];
+      if (!targetSet.contains(song)) {
+        list.removeItem(
+          i,
+          (context, animation) =>
+              _buildUpNextRow(song, animation, leaving: true),
+          duration: _queueAnim,
+        );
+      }
+    }
+    // Arriving rows, top down, at their place in the new list.
+    for (var i = 0; i < target.length; i++) {
+      if (!shownSet.contains(target[i])) {
+        list.insertItem(i, duration: _queueAnim);
+      }
+    }
+    _upNextShown = target;
+  }
+
+  // One Up Next row. `animation` runs 0 -> 1 as a row arrives and 1 -> 0
+  // as it leaves (it's simply 1 for a row that stays). Bottom-aligned, so
+  // a leaving row's content slides up out of the top of its slot while
+  // the rows below move up into the space, fading as it goes.
+  Widget _buildUpNextRow(int song, Animation<double> animation,
+      {bool leaving = false}) {
+    final eased = animation.drive(CurveTween(curve: Curves.easeInOut));
+    // Where this song is in the queue right now, not when the row was drawn:
+    // the queue can move on between the two (a song ending just as you tap).
+    // -1 once it has left Up Next.
+    int position() => _playOrder.indexOf(song, _playOrderIndex + 1);
+    return IgnorePointer(
+      ignoring: leaving,
+      child: SizeTransition(
+        sizeFactor: eased,
+        axisAlignment: 1.0,
+        child: FadeTransition(
+          opacity: eased,
+          child: _buildTrackRow(
+            song,
+            highlight: false,
+            // Jumps straight to that position, YouTube Music style: songs
+            // in between are skipped, so Previous walks back through them
+            // rather than to the song you left.
+            onTap: () {
+              final pos = position();
+              if (pos >= 0) _playSongAt(pos);
+            },
+            // Drops it from this pass only: the next reshuffle pulls from
+            // the full scope again.
+            trailing: IconButton(
+              icon: Icon(Icons.close, color: Colors.grey.shade500),
+              tooltip: 'Remove from queue',
+              onPressed: () {
+                final pos = position();
+                if (pos >= 0) setState(() => _playOrder.removeAt(pos));
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNowPlaying() {
     final song = _catalog[_currentSongIndex!];
     final upNextStart = _playOrderIndex + 1;
     final upNext = _playOrder.sublist(upNextStart);
     final nowRows = min(upNext.length, _maxQueueRows);
+    // The animated list catches up on the next frame (_syncUpNext).
+    final target = upNext.take(nowRows).toList();
+    if (_upNextShown == null) {
+      _upNextShown = target;
+      _upNextKey = GlobalKey<SliverAnimatedListState>();
+    } else if (!_upNextSyncQueued && !listEquals(_upNextShown, target)) {
+      _upNextSyncQueued = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncUpNext());
+    }
     // The next loop only shows once the current pass fits under the cap.
     final loopShown = upNext.length < _maxQueueRows;
     final loop = loopShown ? _nextLoop : const <int>[];
@@ -1357,28 +1506,13 @@ class _PlaylistScreenState extends State<PlaylistScreen>
               ),
             ),
           ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              // Jumps straight to that position, YouTube Music style:
-              // songs in between are skipped, so Previous walks back
-              // through them rather than to the song you left.
-              (context, i) => _buildTrackRow(
-                upNext[i],
-                highlight: false,
-                onTap: () => _playSongAt(upNextStart + i),
-                // Drops it from this pass only: the next reshuffle pulls
-                // from the full scope again.
-                trailing: IconButton(
-                  icon: Icon(Icons.close, color: Colors.grey.shade500),
-                  tooltip: 'Remove from queue',
-                  onPressed: () => setState(
-                    () => _playOrder.removeAt(upNextStart + i),
-                  ),
-                ),
-              ),
-              childCount: nowRows,
-              addAutomaticKeepAlives: false,
-            ),
+          SliverAnimatedList(
+            key: _upNextKey,
+            initialItemCount: _upNextShown!.length,
+            // Read at call time, not captured: _syncUpNext replaces the
+            // list between this page's rebuilds.
+            itemBuilder: (context, i, animation) =>
+                _buildUpNextRow(_upNextShown![i], animation),
           ),
           if (loopShown) ...[
             SliverToBoxAdapter(
