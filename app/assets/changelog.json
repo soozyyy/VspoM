@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.0.26",
+    "date": "2026-11-23",
+    "notes": "Fixed: the app now always shows the song that's playing. Smoother Up Next queue.",
+    "details": [
+      "Fixed: sometimes the app showed one song while a different one was playing. It now moves on to the next song reliably, also with the screen off.",
+      "Fixed: the start of the song that just finished no longer plays for a moment before the next song.",
+      "Fixed: an ad at the start of a song no longer makes the app skip that song.",
+      "Up Next on the Queue tab now animates: songs you skip past slide up and fade out, a removed song fades away, and Previous slides the song you left back in.",
+      "Tapping a song or ✕ in Up Next just as a song ends now always acts on the song you tapped."
+    ]
+  },
+  {
     "version": "1.0.25",
     "date": "2026-11-02",
     "notes": "Louder: songs now play as loud as YouTube and Spotify.",
