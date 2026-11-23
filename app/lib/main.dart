@@ -182,6 +182,9 @@ class _PlaylistScreenState extends State<PlaylistScreen>
   double? _dragValueSeconds; // non-null while the user is actively dragging
   Timer? _progressTimer;
   bool _autoAdvancing = false;
+  // The song before the current one. While the current song's page is
+  // still loading, getPosition still reads that song's page (_pollPosition).
+  String? _prevVideoId;
   // Loop this song: at the end, jump back to 0:00 instead of moving on.
   // Next/Previous still skip. Not saved, so it's off at every launch.
   bool _loopOne = false;
@@ -462,6 +465,7 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     }
     final songIndex = _playOrder[orderIndex];
     _playOrderIndex = orderIndex;
+    _prevVideoId = _currentSong?.videoId;
     setState(() {
       _currentSongIndex = songIndex;
       _playing = true;
@@ -561,28 +565,57 @@ class _PlaylistScreenState extends State<PlaylistScreen>
     }
     if (!mounted || info == null) return;
 
+    // Still the previous song's page: the current one hasn't loaded yet.
+    // Its numbers (and its "ended") belong to the song before, so skip it.
+    final pageId = info['videoId'] as String?;
+    if (pageId != null &&
+        pageId == _prevVideoId &&
+        pageId != _currentSong?.videoId) {
+      return;
+    }
+
     final positionSeconds = (info['position'] as num?)?.toDouble() ?? 0.0;
     final durationSeconds = (info['duration'] as num?)?.toDouble() ?? 0.0;
     final paused = info['paused'] as bool? ?? _isPaused;
+    final ended = info['ended'] as bool? ?? false;
+    final ad = info['ad'] as bool? ?? false;
 
     setState(() {
       _position = Duration(milliseconds: (positionSeconds * 1000).round());
       if (durationSeconds > 0) {
         _duration = Duration(milliseconds: (durationSeconds * 1000).round());
       }
-      _isPaused = paused;
+      // A finished video reports paused. Keep the button as it was, so it
+      // doesn't flick to Play for the moment before the next song.
+      if (!ended) _isPaused = paused;
     });
 
-    // Auto-advance once the current song finishes, so shuffle-play-all keeps
-    // going (and loops via _playSongAt's own wraparound) without the user
-    // having to tap "next" manually every time.
+    // Move on (or loop) just before the song ends, so playback keeps going
+    // (and loops via _playSongAt's own wraparound). Never let YouTube reach
+    // the real end: there it plays end-of-video ads and then its own
+    // autoplay pick or an empty player, while the app kept showing the old
+    // song (claude/bug-wrong-song-shown.md). The window is the last 1 s
+    // and readings come every 500 ms, so at least two land in it. If the
+    // song is seen finished anyway (window missed), move on straight away:
+    // a finished video reports paused, which used to block this for good.
+    // Not during an ad, whose own end isn't the song's.
     final nearEnd = _duration.inMilliseconds > 0 &&
-        _position.inMilliseconds >= _duration.inMilliseconds - 750;
-    if (nearEnd && !_autoAdvancing && !paused) {
+        _position.inMilliseconds >= _duration.inMilliseconds - 1000;
+    if (!ad && (ended || (nearEnd && !paused)) && !_autoAdvancing) {
       _autoAdvancing = true;
-      // Seek, not reload, so no ad plays between loops.
-      await (_loopOne ? _seekTo(Duration.zero) : _next());
-      _autoAdvancing = false;
+      try {
+        if (_loopOne) {
+          // Seek, not reload, so no ad plays between loops.
+          await _seekTo(Duration.zero);
+          if (ended) await _overlayChannel.invokeMethod('resume');
+        } else {
+          await _next();
+        }
+      } catch (_) {
+        // The next reading tries again.
+      } finally {
+        _autoAdvancing = false;
+      }
     }
   }
 

@@ -887,7 +887,10 @@ class OverlayService : Service() {
                 v.__vspoLastVol = v.volume;
                 v.__vspoRetune();
               }
-              if (!window.__vspoUserPaused && v.paused) {
+              // Not on a finished video: the app moves on from it itself
+              // (main.dart _pollPosition). play() would restart the song
+              // from 0:00 meanwhile.
+              if (!window.__vspoUserPaused && v.paused && !v.ended) {
                 log('video unexpectedly paused, calling play()');
                 v.play().catch(function(e) { log('play() rejected: ' + e); });
               }
@@ -1096,25 +1099,34 @@ class OverlayService : Service() {
     }
 
     /**
-     * Reads current playback position/duration/paused state from the
-     * underlying <video> element and hands it back via [callback]
-     * (position seconds, duration seconds, paused). Used to drive the
-     * draggable progress bar in the mini-player.
+     * Reads current playback position/duration/paused/ended state from the
+     * underlying <video> element, whether an ad is showing (same check as
+     * the injected script's AD STARTED/ENDED log), and which video the page
+     * is on, and hands it back via [callback] (position seconds, duration
+     * seconds, paused, ended, ad, page video ID or null). Drives the
+     * progress bar and the app's move-on-at-the-end (main.dart
+     * _pollPosition).
      */
-    fun getPosition(callback: (Double, Double, Boolean) -> Unit) {
+    fun getPosition(callback: (Double, Double, Boolean, Boolean, Boolean, String?) -> Unit) {
         val view = webView
         if (view == null) {
-            callback(0.0, 0.0, true)
+            callback(0.0, 0.0, true, false, false, null)
             return
         }
         view.evaluateJavascript(
             """
             (function() {
               var v = document.querySelector('video');
+              var id = null;
+              try { id = new URLSearchParams(location.search).get('v'); } catch (e) {}
+              var ads = document.querySelector('.video-ads, .ytp-ad-module');
               return JSON.stringify({
                 cur: v ? v.currentTime : 0,
                 dur: (v && v.duration && !isNaN(v.duration)) ? v.duration : 0,
-                paused: v ? v.paused : true
+                paused: v ? v.paused : true,
+                ended: v ? v.ended : false,
+                ad: !!(ads && ads.children && ads.children.length > 0),
+                id: id
               });
             })();
             """.trimIndent()
@@ -1130,10 +1142,13 @@ class OverlayService : Service() {
                 callback(
                     json.optDouble("cur", 0.0),
                     json.optDouble("dur", 0.0),
-                    json.optBoolean("paused", true)
+                    json.optBoolean("paused", true),
+                    json.optBoolean("ended", false),
+                    json.optBoolean("ad", false),
+                    if (json.isNull("id")) null else json.optString("id")
                 )
             } catch (e: Exception) {
-                callback(0.0, 0.0, true)
+                callback(0.0, 0.0, true, false, false, null)
             }
         }
     }

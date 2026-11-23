@@ -131,11 +131,20 @@ class MainActivity : FlutterActivity() {
                 "getPosition" -> {
                     val service = OverlayService.instance
                     if (service == null) {
-                        result.success(mapOf("position" to 0.0, "duration" to 0.0, "paused" to true))
+                        result.success(
+                            mapOf("position" to 0.0, "duration" to 0.0, "paused" to true, "ended" to false)
+                        )
                     } else {
-                        service.getPosition { position, duration, paused ->
+                        service.getPosition { position, duration, paused, ended, ad, videoId ->
                             result.success(
-                                mapOf("position" to position, "duration" to duration, "paused" to paused)
+                                mapOf(
+                                    "position" to position,
+                                    "duration" to duration,
+                                    "paused" to paused,
+                                    "ended" to ended,
+                                    "ad" to ad,
+                                    "videoId" to videoId
+                                )
                             )
                         }
                     }
