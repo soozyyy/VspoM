@@ -46,9 +46,15 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # Pinned to the Flutter used on the maintainer's PC, which is known to
+      # build this project. Unpinned ("latest stable"), a new Flutter release
+      # broke the build on 2026-11-23: it requires Gradle 9.3.1+ and the
+      # project uses 8.14. Upgrade Flutter (and Gradle) here on purpose, after
+      # a local test build.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.38.3
 
       - name: Restore signing keystore from secret
         run: |
